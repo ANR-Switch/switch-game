@@ -1,6 +1,6 @@
 /***
 * Name: trafficgame
-* Author: kaolla
+* Author: kaolla adam
 * Description: simple interactive game about mobility and impact on pollution
 * Actions directly update the values of 4 modes of transport (public transport, car, walk, cycle)
 *   wrt 6 criteria (ecology, price, comfort, safe, easy, fast). Eg plant trees to make it more comfortable to walk

@@ -471,7 +471,7 @@ global {
 				}
 				match 13 {
 					write("BUILD - Repair all roads");
-					list<road> damaged_roads <- road where (status < 1.0);
+					list<road> damaged_roads <- road where (each.status < 1.0);
 					int cost <- actions_costs[10]*length(damaged_roads);
 					if cost < budget {
 						actions_costs[13] <- cost;

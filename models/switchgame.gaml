@@ -1,11 +1,12 @@
 /***
 * Name: trafficgame
-* Author: kaolla adam
+* Author: Carole Adam
 * Description: simple interactive game about mobility and impact on pollution
 * Actions directly update the values of 4 modes of transport (public transport, car, walk, cycle)
 *   wrt 6 criteria (ecology, price, comfort, safe, easy, fast). Eg plant trees to make it more comfortable to walk
 * Each individual has their own priority for the various criteria; picks best mode to do random trips
 * Indicators: total kilometers travelled with each mode, number of trips for each mode, etc
+* Tags : serious game, traffic, mobility, switch
 * 
 * source model
 * Name: Traffic
@@ -17,14 +18,11 @@
 
 model switchgame
 
-// TODO pas assez de voiture donc pas assez de pollution ni d'accidents
-// il faut initialiser les valeurs des critères un peu plus précisément !
-
-// TODO empêcher de faire les actions inutiles
-// TODO réactiver la pollution différentielle selon mode de transport
-// TODO ajouter les contraintes (avoir une voiture, le permis, un vélo, besoin d'un coffre...) ONGOING
-// TODO ajouter les coûts de toutes les actions
 // TODO sliders pour les priorités moyennes des agents (pour favoriser la voiture)
+
+// TODO calibrer les paramètres de la population (fitness, who has a bike, a car, a close bus stop)
+//      d'après les stats INSEE, pour les supprimer des paramètres
+// + calibrer les priorités d'après une survey?
 
 // FIXME time scale
 // il faudrait faire agir les people 365 fois (1 trip par jour sur un an)
@@ -66,7 +64,7 @@ global {
 	
 	// PARAMETERS of the simulator (sliders in interface)
 	float habit_drop_proba; 	//proba to reset habits
-	float move_proba;			// proba that agents move
+	//float move_proba;			// proba that agents move
 	float roads_degrade_speed;  // factor of road degradation over time
 	float accident_proba;		// probability of accident (will be weighed by congestion)
 	// weather (rain yes/no, cold yes/no), or float value from -1 (desagreeable) to +1 (very agreeable)
@@ -113,6 +111,7 @@ global {
 	// happiness of population
 	float indic_happiness <- 0.0;
 	float indic_happy <- 0.0;
+	float indic_accessibility <- 0.0; // how many can move at all
 	
 	// count of distance / trips per year / overall 
 	map<int,int> total_km_travelled;
@@ -147,7 +146,7 @@ global {
 		image_file(dossierImages +"bus-capacity.png"),
 		
 		// ligne 5
-		image_file(dossierImages +"blanc.png"),
+		image_file(dossierImages +"no-car.png"),
 		image_file(dossierImages +"roadwork.png"), // action 13
 		image_file(dossierImages +"bus-frequency.png"),
 		
@@ -164,7 +163,11 @@ global {
 	// which action was clicked in interface
 	int action_type;
 	
-	// INITIALISATION	
+	
+	// ************************
+	// ***  INITIALISATION  ***
+	// ************************
+		
 	init {
 		// buttons with action number
 		do init_buttons;
@@ -187,7 +190,7 @@ global {
       	road_network <- as_edge_graph(road);
 		
 		//Creation of the people agents
-		create people number: 1000{
+		create people number: 100 {
 			//People agents are located anywhere in one of the building
 			location <- any_location_in(one_of(building));
       	}
@@ -196,38 +199,7 @@ global {
       	nb_bus_stops <- int(length(cell) * percent_close_bus);
 	}//end init
 
-	
-	// update indicators every year
-	action update_indicators {
-		indic_circulation <- (road mean_of each.speed_coeff) with_precision 2;
-		indic_pollution <- 0.01 * (cell mean_of each.pollution) with_precision 2;
-		indic_cyclability <- (road count each.cycle_lane) / length(road) with_precision 2;
-		indic_trees <- (cell sum_of each.trees_on_cell);
-		
-		// damage
-		nb_roads_damaged <- length(road where (each.status < 1));
-		avg_damage <- (road mean_of each.status) with_precision 2;
-		
-		// accidents rate this year (count of accidents divided by number of km) (#trips too low)
-		accident_rate <- (road sum_of each.accident_count) / nb_km_year();		
-		
-		// town safety can randomly decrease if not maintained
-		town_safety <- (town_safety - rnd(0.1)) with_precision 2;
-		
-		// bus congestion in places per people (nb trips in a representative day, wrt number buses * places)
-		write("nb people in buses "+length(people where (each.mobility_mode = BUS)));
-		write("bus capacity per day "+bus_capacity * bus_frequency*100);  // TODO peak hours vs daily average...
-		indic_bus_congestion <- length(people where (each.mobility_mode = BUS)) / (bus_capacity * bus_frequency);
-		write("my indic of congestion = "+indic_bus_congestion);
-		
-		// density of bus stops (per cell)
-		percent_close_bus <- (people count each.has_close_bus) / length(people);     //nb_bus_stops / length(cell);
-		
-		// happiness
-		indic_happiness <- (people mean_of each.happiness) with_precision 2;
-		indic_happy <- (people count each.happy) / length(people);
-	}
-	
+
 	// not completely random - all static values computed once and for all here
 	action init_values_modes {
 		//créer la map dans la map avant d'y affecter des valeurs
@@ -248,9 +220,9 @@ global {
 		values_modes[ECOLO][BICYCLE] <- 1.0;	// always max
 		values_modes[EASY][BICYCLE] <- 1.0;		// always easy? 
 		values_modes[TIME][BICYCLE] <- 0.8;		// always good
-		values_modes[PRICE][BICYCLE] <- 0.0;    // always gratis
+		values_modes[PRICE][BICYCLE] <- 1.0;    // always gratis
 		values_modes[COMFORT][BICYCLE] <- 0.7;  // depends on hills, length of trip, age of people, pollution
-		values_modes[SAFE][BICYCLE] <- 0.0;		// depends on cycling lanes ; accidents against bikes
+		values_modes[SAFE][BICYCLE] <- 0.5;		// depends on cycling lanes ; accidents against bikes
 		
 		// walk
 		values_modes[ECOLO][WALK] <- 1.0;		// always ecolo
@@ -269,6 +241,76 @@ global {
 		values_modes[SAFE][BUS] <- 0.4;			// depends on town safety	
 	}
 	
+	// initialise counters of km / trips for each mode
+	action init_indicators {
+		loop i over: transport_modes {
+			year_km_travelled[i] <- 0;
+			total_km_travelled[i] <- 0;
+			year_trips[i] <- 0;
+			total_trips[i] <- 0;
+		}
+	}
+	
+	
+	// *****************************
+	// *** INDICATORS and UPDATE ***
+	// *****************************
+	
+	// functions to sum total km / trips (to be called in graphics)
+	int nb_km_year {
+		int s <- sum(year_km_travelled.values);
+		return s=0?1:s;
+	}
+	
+	int nb_trips_year {
+		int s <- sum(year_trips.values);
+		return s=0?1:s;
+	}
+
+	// update indicators every (start of) year
+	action update_indicators {
+		
+		// add km travelled last year and reset (even on last year)
+		loop i over: transport_modes {		
+			total_km_travelled[i] <- total_km_travelled[i] + year_km_travelled[i];
+			year_km_travelled[i] <- 0;
+			total_trips[i] <- total_trips[i] + year_trips[i];
+			year_trips[i] <- 0;
+		}
+		
+		indic_circulation <- (road mean_of each.speed_coeff) with_precision 2;
+		indic_pollution <- 0.01 * (cell mean_of each.pollution) with_precision 2;
+		indic_cyclability <- (road count each.cycle_lane) / length(road) with_precision 2;
+		indic_trees <- (cell sum_of each.trees_on_cell);
+		
+		// damage
+		nb_roads_damaged <- length(road where (each.status < 1));
+		avg_damage <- (road mean_of each.status) with_precision 2;
+		
+		// accidents rate this year (count of accidents divided by number of km) (#trips too low)
+		accident_rate <- (road sum_of each.accident_count) / nb_km_year();		
+		
+		// town safety can randomly decrease if not maintained
+		town_safety <- (town_safety - rnd(0.1)) with_precision 2;
+		
+		// bus congestion in places per people (nb trips in a representative day, wrt number buses * places)
+		//write("nb people in buses "+length(people where (each.mobility_mode = BUS)));
+		//write("bus capacity per day "+bus_capacity * bus_frequency*100);  // TODO peak hours vs daily average...
+		indic_bus_congestion <- length(people where (each.mobility_mode = BUS)) / (bus_capacity * bus_frequency);
+		//write("my indic of congestion = "+indic_bus_congestion);
+		
+		// density of bus stops (per cell)
+		percent_close_bus <- (people count each.has_close_bus) / length(people);     //nb_bus_stops / length(cell);
+		
+		// happiness
+		indic_happiness <- (people mean_of each.happiness) with_precision 2;
+		indic_happy <- (people count each.happy) / length(people);
+		//indic_accessibility <- (people count (each.mobility_mode > 0)) / length(people) with_precision 4;
+		indic_accessibility <- (people count (each.mobility_mode > 0)) / length(people) with_precision 4;  // ; //is_stuck = false)) 
+		// FIXME 1 JULY over the first 5 or so turns, this only increases, more and more people "can move"
+		// or rather, more and more people "have moved"
+	}
+	
 	
 	// reflex update_values_modes TODO remove modification in actions (indirect)
 	// plutôt que le hardcoder dans les actions, il faut les recalculer
@@ -284,11 +326,11 @@ global {
 		
 		// bicycle
 		//values_modes[ECOLO][BICYCLE] <- 1.0;	// always max
-		values_modes[EASY][BICYCLE] <- avg_fitness;		// always easy? 
+		values_modes[EASY][BICYCLE] <- avg_fitness;		// always easy? hilliness?
 		//values_modes[TIME][BICYCLE] <- 0.8;		// always good? depends a bit on congestion? on hills? on fitness
 		//values_modes[PRICE][BICYCLE] <- 0.1;    // always gratis
 		values_modes[COMFORT][BICYCLE] <- (1-indic_pollution)*weather;    // depends on hills, length of trip, age of people, pollution
-		values_modes[SAFE][BICYCLE] <- indic_cyclability;		// depends on cycling lanes ; accidents against bikes
+		values_modes[SAFE][BICYCLE] <- mean([1-accident_rate,indic_cyclability]); // depends on cycling lanes ; accidents against bikes
 		
 		// walk
 		//values_modes[ECOLO][WALK] <- 1.0;		// always ecolo
@@ -307,54 +349,10 @@ global {
 		values_modes[SAFE][BUS] <- town_safety;			// depends on town safety
 	}
 	
-	// costs of actions - set in advance in a map
-	// index = action_type (0-1-2 = title, 3-20 = actions)
-	action init_actions_costs {
-		// TODO 
-		put 0  at: 3  in: actions_costs;  // change petrol price
-		put 10 at: 4  in: actions_costs;  // build cycling lane
-		put 7  at: 5  in: actions_costs;  // improve sefety
-		put 0  at: 6  in: actions_costs;  // taxrate
-		put 2  at: 7  in: actions_costs;  // plant trees
-		put 5  at: 8  in: actions_costs;  // allow carpark somewhere
-		put 4  at: 10 in: actions_costs;  // repair road
-		put 8  at: 17 in: actions_costs;  // add bus stop
-		// repair all roads: cost depends on number of roads
-		// TODO 
-	}
 	
-	// initialise counters of km / trips for each mode
-	action init_indicators {
-		loop i over: transport_modes {
-			year_km_travelled[i] <- 0;
-			total_km_travelled[i] <- 0;
-			year_trips[i] <- 0;
-			total_trips[i] <- 0;
-		}
-	}
-	
-	// functions to sum total km / trips (to be called in graphics)
-	int nb_km_year {
-		int s <- sum(year_km_travelled.values);
-		return s=0?1:s;
-	}
-	
-	int nb_km_total {
-		int s <- sum(total_km_travelled.values);
-		return s=0?1:s;
-	}
-	
-	int nb_trips_year {
-		int s <- sum(year_trips.values);
-		return s=0?1:s;
-	}
-	
-	int nb_trips_total {
-		int s <- sum(total_trips.values);
-		return s=0?1:s;
-	}
-	
-	
+	// ******************************
+	// *** ENVIRONMENT, POLLUTION ***
+	// ******************************
 
 	//Reflex to update the speed of the roads according to the weights
 	// TODO : can we compute the time for each trip? to compare speed of different modes?
@@ -373,6 +371,11 @@ global {
 	}
 	
 	
+	
+	// **********************************************
+	// ***     INTERACTIVITY & PLAYER ACTIONS     ***
+	// **********************************************
+	
 	// interactivity: management of buttons
 	action init_buttons	{
 		int inc<-0;
@@ -383,6 +386,22 @@ global {
 			inc<-inc+1;
 			inc2<-inc2+1;
 		}
+	}
+	
+	// costs of actions - set in advance in a map here, or in the big switch
+	// index = action_type (0-1-2 = title, 3-20 = actions)
+	action init_actions_costs {
+		// TODO 
+		put 0  at: 3  in: actions_costs;  // change petrol price
+		put 10 at: 4  in: actions_costs;  // build cycling lane
+		put 7  at: 5  in: actions_costs;  // improve sefety
+		put 0  at: 6  in: actions_costs;  // taxrate
+		put 2  at: 7  in: actions_costs;  // plant trees
+		put 5  at: 8  in: actions_costs;  // allow carpark somewhere
+		put 4  at: 10 in: actions_costs;  // repair road
+		put 8  at: 17 in: actions_costs;  // add bus stop
+		// repair all roads: cost depends on number of roads
+		// TODO 
 	}
 	
 	// all possible actions, with budget, and effect on values
@@ -444,7 +463,13 @@ global {
 					// user feedback in console
 					write ("New bus price "+(bus_price)+"");
 				}
-				match 12 {write("PRICES - Action 12");}
+				match 12 {
+					write("PRICES - Forbid old cars");
+					// to check how accessibility of town evolves
+					ask 300 among (people where (each.has_car)) {
+						has_car <- false; // cannot use the car anymore
+					}
+				}
 				match 15 {write("PRICES - Action 15");}
 				match 18 {write("PRICES - Action 18");}			
 				
@@ -616,53 +641,105 @@ global {
 		}
 	}//end action_cell	
 	
-	// GAME MANAGEMENT	
-		
-	reflex newTurn {
-		write("-------\n Year "+cycle);
-			
-		// add km travelled last year and reset (even on last year)
-		loop i over: transport_modes {		
-			total_km_travelled[i] <- total_km_travelled[i] + year_km_travelled[i];
-			year_km_travelled[i] <- 0;
-			total_trips[i] <- total_trips[i] + year_trips[i];
-			year_trips[i] <- 0;
-		}
-		
-		// update indicators, and resulting values of the criteria for each mode
-		do update_indicators;
-		do update_values_modes;
-
-		// reset count of accident at the start of the year
-		ask road {
-			accident_count <- 0;
-		}
-
-		// last turn
-		if (cycle > 100) {do end_game;}
-		else {
-			// collect budget from taxes - TODO every year
-			do collect_budget;
-			
-			// population actions 
-			// TODO play an entire year with a loop of 365 citizens trips
-			//      citizens_behaviour represents one day (simplified to one trip)
-			// TODO distinguish week days and week-ends
-			ask people {do citizens_behaviour;}
-			
-			// player's actions
-			do pause;
-			write("Select your actions then press PLAY (green arrow)");			
-		}
-	}	
-	
 	// collect taxes
 	action collect_budget {
-		budget <- budget + tax_rate * length(people)/100;
+		budget <- budget + tax_rate * length(people);
 		write("Tax collected! New budget "+budget);
 	}
 	
-	action end_game {
+	
+	
+	
+	// ************************************************
+	// ***  INTERACTING WITH POPULATION PRIORITIES  ***	
+	// ************************************************
+	
+	user_command set_prio_ecolo {
+		map input_values <- user_input(["Priority of ecology"::0.5]);
+		ask people {
+			prio_criteria[ECOLO] <- int(input_values["Priority of ecology"]);
+		}
+	}
+	
+	user_command set_prio_money {
+		map input_values <- user_input(["Priority of price"::0.5]);
+		ask people {
+			prio_criteria[PRICE] <- int(input_values["Priority of price"]);
+		}
+	}
+	
+	user_command set_prio_safety {
+		map input_values <- user_input(["Priority of safety"::0.5]);
+		ask people {
+			prio_criteria[SAFE] <- int(input_values["Priority of safety"]);
+		}
+	}
+	
+	user_command set_prio_easy {
+		map input_values <- user_input(["Priority of practicality"::0.5]);
+		ask people {
+			prio_criteria[EASY] <- int(input_values["Priority of practicality"]);
+		}
+	}
+	
+	user_command set_prio_comfort {
+		map input_values <- user_input(["Priority of comfort"::0.5]);
+		ask people {
+			prio_criteria[COMFORT] <- int(input_values["Priority of comfort"]);
+		}
+	}
+	
+	user_command set_prio_time {
+		map input_values <- user_input(["Priority of time"::0.5]);
+		ask people {
+			prio_criteria[TIME] <- int(input_values["Priority of time"]);
+		}
+	}
+	
+	// TODO ONGOING
+	// afficher la note moyenne sur la population de chaque mode de transport
+	
+	
+	// *************************
+	// ***  GAME MANAGEMENT  ***	
+	// *************************
+			
+	// normal turn
+	reflex newTurn when: cycle < 100 {
+		write("-------\n Year "+cycle);
+			
+		// update indicators, and resulting values of the criteria for each mode
+		do update_indicators;
+		do update_values_modes;   // based on indicators
+
+		// reset count of accident at the start of the year
+		ask road {accident_count <- 0;}
+
+		// collect budget from taxes - TODO every year
+		do collect_budget;
+			
+		// population actions 
+		// TODO play an entire year with a loop of 365 citizens trips
+		//      citizens_behaviour represents one day (simplified to one trip)
+		// TODO distinguish week days and week-ends
+		//loop i from: 1 to: 1 { // TODO 52 weeks
+		//write("week "+i);
+		
+		write("Population is doing their trips...");
+		ask people {do citizens_behaviour;}
+		//}		
+		// pause for player's actions
+		do pause;
+		write("Select your actions then press PLAY (green arrow)");
+		write("Available budget : "+budget) color: #red;			
+	}	
+	
+	// last turn
+	reflex end_game when: cycle = 100 {
+		// one last update
+		do update_indicators;
+		do update_values_modes;   // based on indicators
+		
 		write("Game over!");
 		do pause;
 	}
@@ -673,11 +750,12 @@ global {
 
 
 //Species to represent the people using the skill moving
+// TODO 2 JULY store past mobility modes, with score, over past years
 species people skills: [moving]{
 	//Target point of the agent
 	point target;
 	//Probability of leaving the building = PARAMETER
-	float leaving_proba <- move_proba; //0.05; 
+	//float leaving_proba <- move_proba; //0.05; 
 	
 	// Speed of the agent
 	float speed <- 5 #km/#h;
@@ -693,6 +771,11 @@ species people skills: [moving]{
 	map<int,float> prio_criteria;
 	map<int,float> notes_modes;
 	
+	// TODO store history to allow comparison along the mandate of the mayor
+	// needs : happiness (note du mode choisi) et happy (false: 0, true: 1), chaque année
+	// might need: used mode (did it change over the mandate)
+	map<int,list<float>> history;
+	
 	// habits = how often does the agent use each mode (FIXME: should depend on context?)
 	map<int,int> trips_mode; 		// nb of trips per mode over time
 	map<int,float> habits_modes;  	// increases when mode is used, reset sometimes
@@ -705,8 +788,10 @@ species people skills: [moving]{
 	bool has_car;
 	bool has_close_bus;
 	// simulates any constraints preventing from walking (handicap, shop, kids, etc)
-	// TODO same constraints should prevent to use anything else than car...
+	// which also prevents from using bike or bus
 	bool can_walk; 
+	
+	//bool is_stuck <- false; // update: (target!=nil and mobility_mode=0);
 	
 	// TODO liste des modes au fil du temps pour évaluer combien de fois l'individu prend un mode qu'il aime/pas
 	
@@ -724,6 +809,9 @@ species people skills: [moving]{
 		// habits of modes - 
 		// FIXME: individuals have an initial habitual mode? or start at 0? or param of scenario? 
 		loop i over: transport_modes {trips_mode[i] <- 0;}
+		trips_mode[0] <- 0;  // no mobility, cannot move
+		
+		mobility_mode <- -1;
 		
 		// initial constraints (probabilities defined as parameters)
 		has_bike <- flip(percent_has_bike);
@@ -769,10 +857,12 @@ species people skills: [moving]{
 	// can the individual use a given transport mode
 	bool can_use(int mode) {
 		switch mode {
-			match BUS {return has_close_bus;}
-			match BICYCLE {return has_bike;}
+			// FIXME ONGOING 1 JULY - add can_walk constraint but check most people can still move...
+			match BUS {return has_close_bus and can_walk;}  //  and can_walk
+			match BICYCLE {return has_bike and can_walk;}  //  and can_walk
 			match CAR {return has_car;}
 			match WALK {return can_walk;} // depend on age?
+			match 0 {return false;}
 		}
 	}
 	
@@ -798,20 +888,31 @@ species people skills: [moving]{
 	// triggered when the player has finished doing their actions with their budget
 	// (~ one representative day ?) TODO: week days vs week-ends + call in a year loop
 	action citizens_behaviour {
-		if (target = nil) and (flip(leaving_proba)) {
-			do choose_mode;
-			do leave;
+		if (target = nil) {   // and (flip(leaving_proba))  --> always leave !
+			// choose random target
+			// must leave first to set target, then choose mode might depend on target
+			target <- any_location_in(one_of(building));
+			do choose_mode;		// 0 if no feasible mode ; also updates happiness
+			if (mobility_mode = 0) {target <- nil;}  // give up
 		}
+		// only moves if has a target and a mobility mode
 		if target != nil {
-			do move;
+			do move_to_target; // FIXME might not reach destination this year....
 		}
+		
+		put [happiness, happy?1.0:0.0] at: cycle in: history;
 	}	
+	
+	
+	// ONGOING PROBLEM 1 JULY no one can move at all...
+	// all have mobility_mode = 0
+	// due to new constraint can_walk in can_use function
 	
 	// return rationnally preferred mode (independent from constraints)
 	int preferred_mode {
 		int index_pref <- 1;
 		loop i from: 2 to: 4 {
-			if notes_modes[i] > notes_modes[index_pref] {
+			if notes_modes[i] >= notes_modes[index_pref] {
 				index_pref <- i;
 			}
 		}
@@ -821,28 +922,34 @@ species people skills: [moving]{
 	// returns selected mode = preferred among those that are possible (constraints)
 	int selected_mode {
 		// search preferred mode (index of max note)
-		int max_note <- 0;
+		float max_note <- 0.0;
 		int index_pref <- 0;
 		loop i from: 1 to: 4 {
 			// check constraints on usage
-			if notes_modes[i] > max_note and can_use(i) {
+			if notes_modes[i] >= max_note and can_use(i) {
 				index_pref <- i;
+				max_note <- notes_modes[i];
 			}
 		}
-		// TODO what if no transport mode is feasible (index_pref = 0)? the agent cannot move
+		// if no transport mode is feasible, the agent cannot move (returns index_pref = 0)
 		return index_pref;
 	}
 		
 	// habitual mode = most used mode over the past
+	// should be 0 if no trips yet !
 	int habitual_mode {
 		// search mode with highest habit coeff (or highest trip count)
-		int m <- 1;
-		loop i from:2 to: 4 {
-			if habits_modes[i] > habits_modes[m] {m<-i;}
+		int m <- 0;
+		float maxi <- 0.0;
+		loop i from: 1 to: 4 {
+			if habits_modes[i] > maxi {
+				m<-i;
+				maxi <- habits_modes[i];
+			}
 		}
 		return m;
 	}
-				
+			
 	// action to choose mobility mode before leaving based on preference + constraints + habits
 	// TODO also consider peer pressure
 	action choose_mode {
@@ -850,27 +957,29 @@ species people skills: [moving]{
 		int hm <- habitual_mode();
 		
 		// chance to routinely select habitual mobility mode
-		if flip(habits_modes[hm]) and can_use(hm) {mobility_mode <- hm;}
+		if hm > 0 and flip(habits_modes[hm]) and can_use(hm) {mobility_mode <- hm;}
 		// otherwise rational choice is made
 		else {
-			// select mode with best note
+			// select mode with best note and usable
 			mobility_mode <- selected_mode();
+			//if (mobility_mode = 0) {write(""+self+" cannot move");}
 		}
 		
-		// increase habit for this mode (TODO except if = 0 : cannot move)
+		// increase individual habit for this mode (even if = 0 : cannot move)
 		trips_mode[mobility_mode] <- trips_mode[mobility_mode] + 1;
+		// increase global number of trips only when starting the trip
+		year_trips[mobility_mode] <- year_trips[mobility_mode] + 1;
 		
-		// set happiness
-		happiness <- notes_modes[mobility_mode];    // how happy with the chosen mobility mode
-		happy <- mobility_mode = preferred_mode();	// could he use the preferred mobility mode (vs constraints)
+		// set happiness - FIXME even if agent does not choose a mode ? always choose a mode, even if ends up null
+		happiness <- mobility_mode=0?0.0:notes_modes[mobility_mode];    // how happy with the chosen mobility mode
+		happy <- mobility_mode = preferred_mode();	// could he use the preferred mobility mode (vs constraints) 
 	}	
 		
-	// Action to leave the building to another building
-	action leave {
-		// choose random target
-		target <- any_location_in(one_of(building));
-		// increase number of trips only when leaving starting building
-		year_trips[mobility_mode] <- year_trips[mobility_mode] + 1; 
+	
+	// recursive action move to the destination
+	action move_to_target {
+		do move;
+		if target != nil {do move_to_target;}
 	}
 	
 	// Action to move to the target building moving on the road network
@@ -904,8 +1013,35 @@ species people skills: [moving]{
 		// arrived
 		if (location = target) {
 			target <- nil;
+			// reset mode - cannot move (0) or does not want to move (-1)
+			//mobility_mode <- 0; // not moving
 		}	
 	}
+	
+	
+	
+	// measure political satisfaction after one mandate
+	// ONGOING 2 JULY
+	reflex political_satisfaction when: cycle = 6 {
+		write("history = "+history);
+		float old_satisf <- history at 1 at 0;
+		float now_satisf <- history at 6 at 0;
+		bool old_happy <- history at 1 at 0 = 1.0;
+		bool now_happy <- history at 6 at 0 = 1.0; 
+		
+		write("now happy? "+now_happy+" and before? "+old_happy);
+		
+		if now_satisf > old_satisf {
+			write ("improved satisfaction") color: #green;
+		}
+		else if now_satisf = old_satisf {
+			write("equal satisfaction") color: #blue;
+		}
+		else {
+			write("decreased satisfaction") color: #red;
+		}
+	}
+	
 	
 	// TODO draw with a gif shape + color depending on selected mobility mode
 	aspect default {
@@ -1016,16 +1152,20 @@ experiment play type: gui {
 	float minimum_cycle_duration <- 0.01;
  	
 	// parameters of the simulator
-	parameter "Habit drop proba 0-1" init: 0.05 min: 0.0 max: 1.0 var: habit_drop_proba category: "Parameters";
-	parameter "Moving proba" init: 0.5 min: 0.0 max: 1.0 var: move_proba category: "Parameters";
-	parameter "Road degrading" init: 0.1 min: 0.0 max: 1.0 var: roads_degrade_speed category: "Parameters";
-	parameter "Accident proba" init: 0.1 min: 0.0 max: 1.0 var: accident_proba category: "Parameters";
-	parameter "Weather comfort" init: 0.5 min: 0.0 max: 1.0 var: weather category: "Parameters";
-	parameter "Average population fitness" init: 0.5 min: 0.0 max: 1.0 var: avg_fitness category: "Parameters";
-	parameter "Who has a bike (%)" init: 0.7 min: 0.0 max: 1.0 var: percent_has_bike category: "Parameters";
-	parameter "Who has a car (%)" init: 0.9 min: 0.0 max: 1.0 var: percent_has_car category: "Parameters";
-	parameter "Who has a bus stop (%)" init: 0.5 min: 0.0 max: 1.0 var: percent_close_bus category: "Parameters";
-	parameter "Who can walk (%)" init: 0.2 min: 0.0 max: 1.0 var: percent_can_walk category: "Parameters";
+	//parameter "Moving proba" init: 0.5 min: 0.0 max: 1.0 var: move_proba category: "Parameters";
+	
+	// Environment
+	parameter "Road degrading" init: 0.1 min: 0.0 max: 1.0 var: roads_degrade_speed category: "Environment";
+	parameter "Accident proba" init: 0.1 min: 0.0 max: 1.0 var: accident_proba category: "Environment";
+	parameter "Weather comfort" init: 0.5 min: 0.0 max: 1.0 var: weather category: "Environment";
+	
+	// Population
+	parameter "Habit drop proba 0-1" init: 0.05 min: 0.0 max: 1.0 var: habit_drop_proba category: "Population";
+	parameter "Average population fitness" init: 0.5 min: 0.0 max: 1.0 var: avg_fitness category: "Population";
+	parameter "Who has a bike (%)" init: 0.7 min: 0.0 max: 1.0 var: percent_has_bike category: "Population";
+	parameter "Who has a car (%)" init: 0.9 min: 0.0 max: 1.0 var: percent_has_car category: "Population";
+	parameter "Who has a bus stop (%)" init: 0.5 min: 0.0 max: 1.0 var: percent_close_bus category: "Population";
+	parameter "Who can walk (%)" init: 0.2 min: 0.0 max: 1.0 var: percent_can_walk category: "Population";
 	// TODO population size?
 	
 	output {
@@ -1059,7 +1199,7 @@ experiment play type: gui {
 				col <- #green;
 				top <- 50 #px;
 				m <- BICYCLE;
-				draw 'Bicycle : ' at: {30#px, top} color: col font:font("SansSerif", 12, #bold);
+				draw 'Bicycle : '+(people mean_of each.notes_modes[BICYCLE] with_precision 2) at: {30#px, top} color: col font:font("SansSerif", 12, #bold);
 				draw '  - Ecology : '+values_modes[ECOLO][m] with_precision 2 at: {40#px, top+10#px} color: col;
 				draw '  - Price : '+values_modes[PRICE][m] with_precision 2 at: {40#px, top+20#px} color: col;
 				draw '  - Comfort : '+values_modes[COMFORT][m] with_precision 2 at: {40#px, top+30#px} color: col;
@@ -1070,7 +1210,7 @@ experiment play type: gui {
 				col <- #red;
 				top <- 130 #px;
 				m <- CAR;
-				draw 'Car : ' at: {30#px, top} color: col font:font("SansSerif", 12, #bold);
+				draw 'Car : '+(people mean_of each.notes_modes[CAR] with_precision 2) at: {30#px, top} color: col font:font("SansSerif", 12, #bold);
 				draw '  - Ecology : '+values_modes[ECOLO][m] with_precision 2 at: {40#px, top+10#px} color: col;
 				draw '  - Price : '+values_modes[PRICE][m] with_precision 2 at: {40#px, top+20#px} color: col;
 				draw '  - Comfort : '+values_modes[COMFORT][m] with_precision 2 at: {40#px, top+30#px} color: col;
@@ -1081,7 +1221,7 @@ experiment play type: gui {
 				col <- #blue;
 				top <- 210 #px;
 				m <- BUS;
-				draw 'Public transport : ' at: {30#px, top} color: col font:font("SansSerif", 12, #bold);
+				draw 'Bus : '+(people mean_of each.notes_modes[BUS] with_precision 2) at: {30#px, top} color: col font:font("SansSerif", 12, #bold);
 				draw '  - Ecology : '+values_modes[ECOLO][m] with_precision 2 at: {40#px, top+10#px} color: col;
 				draw '  - Price : '+values_modes[PRICE][m] with_precision 2 at: {40#px, top+20#px} color: col;
 				draw '  - Comfort : '+values_modes[COMFORT][m] with_precision 2 at: {40#px, top+30#px} color: col;
@@ -1092,7 +1232,7 @@ experiment play type: gui {
 				col <- #pink;
 				top <- 290 #px;
 				m <- WALK;
-				draw 'Walking : ' at: {30#px, top} color: col font:font("SansSerif", 12, #bold);
+				draw 'Walking : '+(people mean_of each.notes_modes[WALK] with_precision 2) at: {30#px, top} color: col font:font("SansSerif", 12, #bold);
 				draw '  - Ecology : '+values_modes[ECOLO][m] with_precision 2 at: {40#px, top+10#px} color: col;
 				draw '  - Price : '+values_modes[PRICE][m] with_precision 2 at: {40#px, top+20#px} color: col;
 				draw '  - Comfort : '+values_modes[COMFORT][m] with_precision 2 at: {40#px, top+30#px} color: col;
@@ -1111,9 +1251,10 @@ experiment play type: gui {
 				draw " - "+nb_roads_damaged+" roads damaged ("+avg_damage+"% damage avg)" at: {d, 160#px} color: #red;
 				draw " - Accident rate : "+accident_rate with_precision 2 at:{d,180#px} color: #red;
 				draw " - Town safety : "+town_safety at: {d,200#px} color: #blue;
-				draw " - Bus density : "+percent_close_bus+" %" at: {d, 220#px} color: #blue;
+				draw " - Bus density : "+percent_close_bus*100+" %" at: {d, 220#px} color: #blue;
 				draw " - Pop happiness : "+indic_happiness at: {d, 240#px} color: #green;				
 				draw " - Pop happy % : "+indic_happy at: {d, 260#px} color: #green;
+				draw " - Accessibility % : "+(indic_accessibility*100)+" %" at: {d, 280#px} color: #pink;
        		}//end overlay
 		}//end display indicators
 		
@@ -1127,27 +1268,27 @@ experiment play type: gui {
 		display KmPerMode {
 			chart "Current year km/mode"  size: {0.5,0.5} position: {0, 0} type:pie
 			{
-				data "bicycle km" value:year_km_travelled[BICYCLE]/ world.nb_km_year()  color:°green;
-				data "car km" value:year_km_travelled[CAR]/ world.nb_km_year() color:°red;
-				data "bus km" value:year_km_travelled[BUS]/ world.nb_km_year() color:°blue;
-				data "walk km" value:year_km_travelled[WALK]/ world.nb_km_year() color:°yellow;
+				data "bicycle km" value:year_km_travelled[BICYCLE] color:°green; // / world.nb_km_year()
+				data "car km" value:year_km_travelled[CAR] color:°red;
+				data "bus km" value:year_km_travelled[BUS] color:°blue;
+				data "walk km" value:year_km_travelled[WALK] color:°yellow;
 			}
 			
 			chart "Total km/mode"  size: {0.5,0.5} position: {0.5, 0} type:pie axes:#white
 			{
-				data "bicycle km" value:total_km_travelled[BICYCLE]/ world.nb_km_total() accumulate_values:true color:°green;
-				data "car km" value:total_km_travelled[CAR]/ world.nb_km_total() accumulate_values:true color:°red;
-				data "bus km" value:total_km_travelled[BUS]/ world.nb_km_total() accumulate_values:true color:°blue;
-				data "walk km" value:total_km_travelled[WALK]/ world.nb_km_total() accumulate_values:true color:°yellow;				
+				data "bicycle km" value:total_km_travelled[BICYCLE] accumulate_values:true color:°green; // / world.nb_km_total()
+				data "car km" value:total_km_travelled[CAR] accumulate_values:true color:°red;
+				data "bus km" value:total_km_travelled[BUS] accumulate_values:true color:°blue;
+				data "walk km" value:total_km_travelled[WALK] accumulate_values:true color:°yellow;				
 			}
 			
 			chart "Km/mode over time"   size: {1.0,0.5} position: {0, 0.5} type:series 
 			series_label_position: legend
 			{
-				data "bicycle km" value:year_km_travelled[BICYCLE]/ world.nb_km_year() color:°green;
-				data "car km" value:year_km_travelled[CAR]/ world.nb_km_year() color:°red;
-				data "bus km" value:year_km_travelled[BUS]/ world.nb_km_year()  color:°blue;
-				data "walk km" value:year_km_travelled[WALK]/ world.nb_km_year() color:°yellow;			
+				data "bicycle km" value:year_km_travelled[BICYCLE] color:°green;   // / world.nb_km_year()
+				data "car km" value:year_km_travelled[CAR] color:°red;
+				data "bus km" value:year_km_travelled[BUS]  color:°blue;
+				data "walk km" value:year_km_travelled[WALK] color:°yellow;			
 			}
 		}//end display graphiques
 		

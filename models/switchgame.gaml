@@ -61,6 +61,7 @@ global {
 	int EASY <- 5;
 	int TIME <- 6;
 	list<int> criteria <- [ECOLO, PRICE, COMFORT, SAFE, EASY, TIME];
+	// TODO: additional HEALTH criteria? but very static (soft mobility always better)
 	
 	// PARAMETERS of the simulator (sliders in interface)
 	float habit_drop_proba; 	//proba to reset habits
@@ -371,6 +372,30 @@ global {
 	}
 	
 	
+	// *****************************************
+	// ***       ELECTIONS - NEW MAYOR       ***
+	// *****************************************
+	
+	// organise election between the player and automated candidates (randomly picked in a pool?)
+	action do_elections {
+		// liste des noms des candidats
+		list<string> candidates;
+		// map des comptes de voix par candidat
+		map<string,int> voices;
+		
+		// initialiser les voix à 0
+		loop c over: candidates {
+			voices[c] <- 0;
+		}
+		
+		// faire voter les citoyens
+		ask people {
+			string voice <- vote(candidates);
+			voices[voice] <- voices[voice] + 1;
+		}
+	}
+	
+	
 	
 	// **********************************************
 	// ***     INTERACTIVITY & PLAYER ACTIONS     ***
@@ -654,6 +679,12 @@ global {
 	// ***  INTERACTING WITH POPULATION PRIORITIES  ***	
 	// ************************************************
 	
+	// any actions from the player via the buttons do change the values of the criteria
+	// these actions change the priorities of the criteria
+	// they could actually be communication actions also available from the GUI
+	// What we want to show: just changing the town has no impact if there is no change in priorities
+	// probably the reset of habits is also a reset of priorities when something changes
+	
 	user_command set_prio_ecolo {
 		map input_values <- user_input(["Priority of ecology"::0.5]);
 		ask people {
@@ -757,6 +788,8 @@ species people skills: [moving]{
 	//Probability of leaving the building = PARAMETER
 	//float leaving_proba <- move_proba; //0.05; 
 	
+	// TODO: gender et age non pertinents, extrapolés en liste des priorités?
+	
 	// Speed of the agent
 	float speed <- 5 #km/#h;
 	rgb color <- rnd_color(255);
@@ -771,10 +804,11 @@ species people skills: [moving]{
 	map<int,float> prio_criteria;
 	map<int,float> notes_modes;
 	
-	// TODO store history to allow comparison along the mandate of the mayor
-	// needs : happiness (note du mode choisi) et happy (false: 0, true: 1), chaque année
+	// store history of happiness to allow comparison along the mandate of the mayor
+	// stores : happiness (note du mode choisi) et happy (false: 0, true: 1), chaque année
 	// might need: used mode (did it change over the mandate)
-	map<int,list<float>> history;
+	map<int,list<float>> history_happiness;
+	list<int> history_mobility <- [];
 	
 	// habits = how often does the agent use each mode (FIXME: should depend on context?)
 	map<int,int> trips_mode; 		// nb of trips per mode over time
@@ -894,13 +928,17 @@ species people skills: [moving]{
 			target <- any_location_in(one_of(building));
 			do choose_mode;		// 0 if no feasible mode ; also updates happiness
 			if (mobility_mode = 0) {target <- nil;}  // give up
+			
+			// store in history for this year
+			add mobility_mode to: history_mobility;
+			
 		}
 		// only moves if has a target and a mobility mode
 		if target != nil {
 			do move_to_target; // FIXME might not reach destination this year....
 		}
 		
-		put [happiness, happy?1.0:0.0] at: cycle in: history;
+		put [happiness, happy?1.0:0.0] at: cycle in: history_happiness;
 	}	
 	
 	
@@ -1020,14 +1058,19 @@ species people skills: [moving]{
 	
 	
 	
+	
+	// ************************************************
+	// ***       ELECTIONS - CHOOSE CANDIDATE       ***
+	// ************************************************
+	
 	// measure political satisfaction after one mandate
 	// ONGOING 2 JULY
 	reflex political_satisfaction when: cycle = 6 {
-		write("history = "+history);
-		float old_satisf <- history at 1 at 0;
-		float now_satisf <- history at 6 at 0;
-		bool old_happy <- history at 1 at 0 = 1.0;
-		bool now_happy <- history at 6 at 0 = 1.0; 
+		write("history = "+history_happiness);
+		float old_satisf <- history_happiness at 1 at 0;
+		float now_satisf <- history_happiness at 6 at 0;
+		bool old_happy <- history_happiness at 1 at 0 = 1.0;
+		bool now_happy <- history_happiness at 6 at 0 = 1.0; 
 		
 		write("now happy? "+now_happy+" and before? "+old_happy);
 		
@@ -1042,8 +1085,20 @@ species people skills: [moving]{
 		}
 	}
 	
+	string vote(list<string> candidates) {
+		// doit avoir accès aux priorités des candidats
+		// FIXME exprimées sur les critères, ou sur les modes?
+		
+		return "mon candidat préféré";
+	}
+	
+	
+	// ***************************************************
+	// ***       VISUALISATION OF CITIZENS ON MAP      ***
+	// ***************************************************
 	
 	// TODO draw with a gif shape + color depending on selected mobility mode
+	// TODO another aspect to show happiness with a color
 	aspect default {
 		draw circle(5) color: color;
 	}

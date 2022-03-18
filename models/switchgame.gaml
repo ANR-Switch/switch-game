@@ -20,13 +20,22 @@ model switchgame
 
 // TODO sliders pour les priorités moyennes des agents (pour favoriser la voiture)
 
+// TODO simplified interface in a 2nd experiment
+// TODO habits per context, weather, peak hour, etc? pas le thème de ce jeu, si ce n'est pour créer un peu d'inertie
+
 // TODO calibrer les paramètres de la population (fitness, who has a bike, a car, a close bus stop)
 //      d'après les stats INSEE, pour les supprimer des paramètres
 // + calibrer les priorités d'après une survey?
 
-// FIXME time scale
-// il faudrait faire agir les people 365 fois (1 trip par jour sur un an)
-// avant de redonner la main au joueur pour l'année suivante
+
+// TODO
+// - satisfaction dépend des impôts
+// - priorité du critère prix dépend des impôts
+// - afficher un pie chart des modes préférés des citoyens (qui utilisent p-e un mode non préféré)
+// - plutôt qu'un pie chart, afficher le nombre de trajets et de km fait pour chaque mode
+// - afficher un pie chart du mode habituel des citoyens (le plus de trajets sur les 200 de l'année)
+
+// TODO doc : documenter l'ajout d'un bouton d'action
 
 global {
 	//Shapefile of the buildings
@@ -64,29 +73,34 @@ global {
 	// TODO: additional HEALTH criteria? but very static (soft mobility always better)
 	
 	// PARAMETERS of the simulator (sliders in interface)
-	float habit_drop_proba; 	//proba to reset habits
 	//float move_proba;			// proba that agents move
 	float roads_degrade_speed;  // factor of road degradation over time
 	float accident_proba;		// probability of accident (will be weighed by congestion)
-	// weather (rain yes/no, cold yes/no), or float value from -1 (desagreeable) to +1 (very agreeable)
+	// weather (TODO rain yes/no, cold yes/no), or float value from -1 (desagreeable) to +1 (very agreeable)
 	float weather <- 0.5 min: 0.0 max: 1.0;
+	
+	// PARAMETERS OF POPULATION
+	float habit_drop_proba; 	//proba to reset habits
 	float avg_fitness <- 0.5 min: 0.0 max: 1.0; // affects how easy/comfortable it is to walk/cycle
 	// parameters affecting which transports modes are available to who
 	float percent_has_bike <- 0.7 min: 0.0 max: 1.0;  // to be updated by policies to help buy a bike/ train to cycle
 	float percent_has_car <- 0.9 min: 0.0 max: 1.0;   // to be updated by policies to forbid some cars
-	float percent_close_bus <- 0.5 min: 0.0 max: 1.0; // to be updated by policies to build bus stops
 	float percent_can_walk <- 0.5 min: 0.0 max: 1.0;  // velo cargo
 	
+	// PARAMETERS OF BUS / PUBLIC TRANSPORT
+	// FIXME ce paramètre est différent, ce n'est pas un attribut de la population mais de la couverture du réseau de bus
+	float percent_close_bus <- 0.5 min: 0.0 max: 1.0; // to be updated by policies to build bus stops
+	
 	// PARAMETERS affected by player actions (urban management)
-	float petrol_price <- 1.6 min: 0.01; // prix au litre - avoid div by zero
 	float bus_price <- 0.5 min: 0.01;
 	// frequency of buses : 1 means max freq, no wait between buses
 	float bus_frequency <- 0.3 min: 0.1 max: 1.0; 
 	int bus_capacity <- 30; //nb people per bus
 	
 	// MONEY MONEY
-	float budget <- 200.0;
-	float tax_rate <- 5.0; // TODO: only on petrol?
+	float petrol_price <- 1.6 min: 0.01; // prix au litre - avoid div by zero
+	float budget <- 0.0; // collecté sur les impôts en début de tour // <- 200.0;
+	float tax_rate <- 5.0; // TODO: only on petrol? add a tax on petrol?
 	// map de coût de chaque action 
 	map<int,int> actions_costs;
 	
@@ -113,6 +127,9 @@ global {
 	float indic_happiness <- 0.0;
 	float indic_happy <- 0.0;
 	float indic_accessibility <- 0.0; // how many can move at all
+	
+	// TODO add vitesse limite autorisée
+	// add capacité des routes (selon que voies dédiées aux bus / vélos / voitures)
 	
 	// count of distance / trips per year / overall 
 	map<int,int> total_km_travelled;
@@ -301,6 +318,7 @@ global {
 		//write("my indic of congestion = "+indic_bus_congestion);
 		
 		// density of bus stops (per cell)
+		// paramètre au départ, puis l'ajout de bus stop met l'attribut à vrai pour 10 personnes
 		percent_close_bus <- (people count each.has_close_bus) / length(people);     //nb_bus_stops / length(cell);
 		
 		// happiness
@@ -323,7 +341,7 @@ global {
 		values_modes[TIME][CAR] <- 1-indic_circulation ;	 	// depends on congestion, average duration of trips?
 		values_modes[PRICE][CAR] <- max([0,1-petrol_price/2]); 	// petrol price and tax rate
 		//values_modes[COMFORT][CAR] <- 1-avg_damage; 	// depends on roads status 
-		values_modes[SAFE][CAR] <- 1-accident_rate; 	// depends on accident rate WARNING accident_rate stays null
+		values_modes[SAFE][CAR] <- 1-accident_rate; 	// depends on accident rate
 		
 		// bicycle
 		//values_modes[ECOLO][BICYCLE] <- 1.0;	// always max
@@ -561,7 +579,7 @@ global {
 				}
 				match 8 {
 					// build car park: TODO
-					write("CODE - Action 8");
+					write("CODE - Build carparks (Action 8 : TODO)");
 				} 
 				match 11 {
 					write("CODE - Bus frequency");
@@ -612,7 +630,10 @@ global {
 				}
 				match 17 {
 					write("CODE - Add bus stop");
-					nb_bus_stops <- nb_bus_stops + 1; // will increase density hence practicity, time					
+					// TODO : augmenter directement le percent_close_bus (ou bien le nommer bus_cover)
+					// TODO: pour l'instant cette variable nb_bus_stops n'a aucun impact nulle part...
+					nb_bus_stops <- nb_bus_stops + 1; // will increase density hence practicity, time
+										
 					// some agents now gain a closer bus stop (about the population of one cell)
 					// attention il y a moins de people que de cells... (1000 contre 2500)
 					ask 10 among (people where ( not each.has_close_bus)) {
@@ -814,8 +835,8 @@ species people skills: [moving]{
 	map<int,int> trips_mode; 		// nb of trips per mode over time
 	map<int,float> habits_modes;  	// increases when mode is used, reset sometimes
 	
-	// accidents in the past (TODO impact perception of safety? well-being?)
-	int accidents <- 0;
+	// accidents in the past (TODO impact perception of safety? well-being?) not used yet
+	int accidents <- 0; // TODO store different counters for each mode (eg 0 accidents in car, 2 accidents on bike)
 	
 	// Constraints = available transports - parameterised proba
 	bool has_bike;
@@ -836,6 +857,8 @@ species people skills: [moving]{
 	// initialisation
 	init {
 		// priority of criteria
+		// TODO paramétrer la moyenne des priorités ou bien la calibrer sur enquêtes réelles
+		// TODO certaines actions (sensibilisation, communication) doivent pouvoir modifier ces prios
 		loop i over: criteria {
 			prio_criteria[i] <- rnd(1.0);
 		}
@@ -868,6 +891,7 @@ species people skills: [moving]{
 	// global proba for any agent to drop their habit at each time step (= year)
 	// simulates changes in life cycle (new work, move house, baby...)
 	reflex drop_habits when: flip(habit_drop_proba) {
+		// FIXME reset counter of trips, or habit proba?
 		loop i over: transport_modes {trips_mode[i] <- 0;}
 	}
 	
@@ -922,17 +946,27 @@ species people skills: [moving]{
 	// triggered when the player has finished doing their actions with their budget
 	// (~ one representative day ?) TODO: week days vs week-ends + call in a year loop
 	action citizens_behaviour {
-		if (target = nil) {   // and (flip(leaving_proba))  --> always leave !
-			// choose random target
-			// must leave first to set target, then choose mode might depend on target
-			target <- any_location_in(one_of(building));
-			do choose_mode;		// 0 if no feasible mode ; also updates happiness
-			if (mobility_mode = 0) {target <- nil;}  // give up
-			
-			// store in history for this year
-			add mobility_mode to: history_mobility;
-			
+		
+		// time scale
+		// il faudrait faire agir les people 365 fois (1 trip par jour sur un an)
+		// avant de redonner la main au joueur pour l'année suivante
+		// done 4 March 2022 : 200 choix de déplacement dans l'historique, mais 1 seule animation
+		
+		// l'historique stocke 200 déplacements au travail par an
+		loop i from: 0 to: 200 {
+			if (target = nil) {   // and (flip(leaving_proba))  --> always leave !
+				// choose random target
+				// must leave first to set target, then choose mode might depend on target
+				target <- any_location_in(one_of(building));
+				do choose_mode;		// 0 if no feasible mode ; also updates happiness
+				if (mobility_mode = 0) {target <- nil;}  // give up
+				
+				// store in history for this year + TODO: also store score of this mode at that time
+				add mobility_mode to: history_mobility;
+			}
 		}
+		
+		// pour simplifier, on n'anime qu'un déplacement pour l'année
 		// only moves if has a target and a mobility mode
 		if target != nil {
 			do move_to_target; // FIXME might not reach destination this year....
@@ -1085,6 +1119,7 @@ species people skills: [moving]{
 		}
 	}
 	
+	// TODO ongoing election mechanism
 	string vote(list<string> candidates) {
 		// doit avoir accès aux priorités des candidats
 		// FIXME exprimées sur les critères, ou sur les modes?
@@ -1120,7 +1155,9 @@ species road {
 	// TODO la capacité baisse si piste cyclable? (prend de la place)
 	float capacity <- 1 + shape.perimeter/30;
 	//Number of people on the road
-	int nb_people <- 0 update: length(people at_distance 1);
+	int nb_people <- 0 update: length(people at_distance 1); 
+	// TODO : compter les bus comme une seule personne ! il faut compter les véhicules et pas les people
+	
 	//Speed coefficient computed using the number of people on the road and the capacity of the road
 	// TODO ne pas compter les people à vélo dans la congestion / ne les compter que si en voiture
 	float speed_coeff <- 1.0 update:  exp(-nb_people/capacity) min: 0.1;

@@ -17,14 +17,15 @@
 
 model switchlite
 
-// TODO sliders pour les priorités moyennes des agents (pour favoriser la voiture)
-
-// TODO simplified interface in a 2nd experiment
+// simplified interface in a 2nd experiment
 // TODO habits per context, weather, peak hour, etc? pas le thème de ce jeu, si ce n'est pour créer un peu d'inertie
 
 // TODO calibrer les paramètres de la population (fitness, who has a bike, a car, a close bus stop)
 //      d'après les stats INSEE, pour les supprimer des paramètres
-// + calibrer les priorités d'après une survey?
+// et supprimer les paramètres de l'interface
+
+// TODO sliders pour les priorités moyennes des agents (pour favoriser la voiture)
+// ou calibrer les priorités d'après une survey?
 
 
 // TODO
@@ -39,7 +40,10 @@ model switchlite
 // - budget individuel des agents, savoir s'ils peuvent payer bus / voiture, avec salaire annuel, et prio "eco" basée dessus
 // - actions de communication: valoriser l'écologie, le vélo, la marche, la voiture électrique...
 // - events aléatoiores au début de chaque année : canicule, grève, etc
-
+// - historique de toutes les actions effectuées et de tous les événements
+// - indicateur de sédentarité de la population
+// - actions télétravail / horaires décalés, pour réduire la congestion à l'heure de pointe
+// - communication sur sport, sédentarité, santé
 
 // TODO doc : documenter l'ajout d'un bouton d'action
 
@@ -117,12 +121,16 @@ global {
 	float petrol_price <- 1.6 min: 0.01; // prix au litre - avoid div by zero
 	float budget <- 0.0; // collecté sur les impôts en début de tour // <- 200.0;
 	float tax_rate <- 5.0; // TODO: only on petrol? add a tax on petrol?
+	int parking_price <- 0; 
+	
 	// map de coût de chaque action 
 	map<int,int> actions_costs;
 	
 	// INDICATORS - to be displayed in game interface
 	// bouchons / taux d'utilisation des routes
 	float indic_circulation <- 1.0 min: 0.01 max: 1.0; // update: (road mean_of each.speed_coeff);
+	// en fonction de l'infrastructure et du % d'utilisateurs de la voiture
+	
 	// pollution (augmentée par les voitures)
 	float indic_pollution <- 0.0;   // update: 0.01 * (cell mean_of each.pollution) ;
 	// nombre d'arbres plantés (sur chaque cellule)
@@ -132,6 +140,7 @@ global {
 	int nb_roads_damaged <- 0;
 	// accident rate (per number of trips)
 	float accident_rate <- 0.0 min:0.0 max:1.0;
+	
 	// town safety (criminality) for pedestrians / public transports
 	float town_safety <- 0.5 min: 0.0 max: 1.0; // FIXME init ?
 	// bus congestion
@@ -502,6 +511,7 @@ global {
 		put 6 at: 14 in: actions_costs;
 		
 		add image_file(dossierImages +"blanc.png") to: images;
+		// change habits: ask some people to drop their habits, among those who use cars?
 		
 		// ligne 5
 		add image_file(dossierImages +"no-car.png") to: images;
@@ -555,31 +565,35 @@ global {
 			
 				// PRICES
 				match 4 { do change_petrol_price; }
-				match 5 { do change_tax_rate; }
-				match 9 { do change_bus_price; }
-				match 12 { do forbid_old_cars; }
-				match 15 { do tax_carpark;}
-				match 18 {write("PRICES - Action 18");}			
+				match 8 { do change_tax_rate; }
+				match 12 { do change_bus_price; }
+				match 16 { do forbid_old_cars; }
+				match 20 { do tax_carpark;}
+				match 24 {write("PRICES - Action 6");}			
 				
 				// INFRASTRUCTURES
-				match 4 { do build_cycling_lane; }
-				match 7 { do plant_trees; }
-				match 10 { do repair_road; }
-				match 13 {write("BUILD");}
-				match 16 {write("BUILD - Action 16");}
-				match 19 {write("BUILD - Action 19");}
+				match 5 { do build_cycling_lane; }
+				match 9 { do plant_trees; }
+				match 13 { do repair_road; }
+				match 17 {write("BUILD - action 4");}
+				match 21 {write("BUILD - Action 5");}
+				match 25 {write("BUILD - Action 6");}
 			
 				// REGULATIONS
-				match 5 { do improve_town_safety; }
-				match 8 { do build_carpark; } 
-				match 11 { do change_bus_frequency; }
-				match 14 { do increase_bus_capacity; }
-				match 17 { do add_bus_stop; }
-				match 20 { do change_speed_rule; }
+				match 6  { do improve_town_safety; }
+				match 10 { do build_carpark; } 
+				match 14 { do change_bus_frequency; }
+				match 18 { do increase_bus_capacity; }
+				match 22 { do add_bus_stop; }
+				match 26 { do change_speed_rule; }
 				
 				// COMMUNICATION
 				match 7 { do communicate_ecology; }	
-				match 11 { do communicate_roadsafety; }	
+				match 11 { do communicate_roadsafety; }
+				match 15 {write("COMM - Change habits?");}
+				match 19 {write("COMM - action 4");}
+				match 23 {write("COMM - action 5");}
+				match 27 {write("COMM - action 6");}
 			}
 			
 			// deduce budget if and only if action was performed indeed
@@ -591,21 +605,38 @@ global {
 	}//end activate_act
 		
 	
-	
-	
 	// collect taxes
 	action collect_budget {
 		// get taxes from each citizen
-		budget <- budget + tax_rate * length(people);
+		float plus <- tax_rate * length(people);
+		write("Taxes: "+string(plus));
+		budget <- budget + plus;
 		
 		// get petrol taxes 1% per each km travelled by car
 		// warning: must be collected before resetting km travelled last year
-		budget <- budget + petrol_price * year_trips[CAR] * 0.01;
-		// TODO: get some from bus km as well? could be a choice for the player: tax buses or not
+		plus <- petrol_price * year_trips[CAR] * 0.01;
+		write("Petrol taxes: "+string(plus));
+		budget <- budget + plus;
 		
-		// TODO get from bus ticket, from carpark tax...
+		// tax car parking
+		plus <- parking_price * 1.0 * year_trips[CAR];
+		write("Carpark taxes: "+string(plus));
+		budget <- budget + plus;
+		
+		// TODO: get some from bus km as well? could be a choice for the player: tax buses or not
+		plus <- bus_price * year_trips[BUS];		
+		write("Bus taxes: "+string(plus));
+		budget <- budget + plus;
 		
 		write("Tax collected! New budget "+budget);
+	}
+	
+	// yearly fees for the mayor
+	action pay_costs {
+		// prix d'entretien par bus (haute frequence coûte plus cher)
+		
+		// prix d'entretien des routes? ou bien c'est une action volontaire
+		
 	}
 	
 	
@@ -768,6 +799,13 @@ global {
 	
 	action tax_carpark {
 		write("MONEY - Tax carparks");
+		
+		// read user input for new bus capa
+		string msg <- "New parking price?";
+		int old_capa <- bus_capacity;	
+		map input_values <- user_input([msg::(parking_price)]);
+		parking_price <- int(input_values[msg]);
+		
 		// TODO : increase mayor's budget based on number of cars
 		//        decreases indiv budget of car drivers 
 	}
@@ -960,7 +998,7 @@ species people skills: [moving]{
 		
 		// habits of modes - 
 		// FIXME: individuals have an initial habitual mode? or start at 0? or param of scenario? 
-		loop i over: transport_modes {trips_mode[i] <- 0; notes_modes[i]<-0.0;}
+		loop i over: transport_modes {trips_mode[i] <- 0; notes_modes[i]<-1.0;}
 		trips_mode[0] <- 0;  // no mobility, cannot move
 		
 		mobility_mode <- -1;
@@ -1403,18 +1441,7 @@ experiment play type: gui {
     	   			// values_modes.values collect (each[BICYCLE]
        		}// end chart
        		
-       		/*chart "MODES SCORES" type: radar //background: #white axes: #black size: {0.5,0.5} position: {0,0.5}
-       			x_serie_labels: ["walk22","bicycle22","bus22","car22"]
-       			series_label_position: xaxis
-       			{
-       				data "avg22score" value: //[0.56,0.66,0.54,0.48] color: #blue;
-       				[ (people mean_of each.notes_modes[WALK]) with_precision 2, 
-       											(people mean_of each.notes_modes[BICYCLE]) with_precision 2,
-       											(people mean_of each.notes_modes[BUS]) with_precision 2, 
-       											(people mean_of each.notes_modes[CAR]) with_precision 2
-       				] color: #blue;
-       			}*/ //end chart
-        		chart "MODES SCORES" type: histogram 
+       		chart "MODES SCORES" type: histogram size: {0.5,0.5} position: {0,0.5}
        			{
        				datalist ["walk","bicycle","bus","car"] value: [ (people mean_of each.notes_modes[WALK]) with_precision 2, 
        											(people mean_of each.notes_modes[BICYCLE]) with_precision 2,
@@ -1423,6 +1450,18 @@ experiment play type: gui {
        				];
        			} //end chart       			
        		
+       		/*chart "MODES SCORES" type: radar //background: #white axes: #black size: {0.5,0.5} position: {0,0.5}
+       			x_serie_labels: ["walk","bicycle","bus","car"]
+       			series_label_position: xaxis  size: {0.5,0.5} position: {0.5,0.5}
+       			{
+       				data "avg score" value: 
+       				[ (people mean_of each.notes_modes[WALK]) with_precision 2, 
+       											(people mean_of each.notes_modes[BICYCLE]) with_precision 2,
+       											(people mean_of each.notes_modes[BUS]) with_precision 2, 
+       											(people mean_of each.notes_modes[CAR]) with_precision 2
+       				] color: #blue;
+       			} //end chart
+       		*/
        		
        		// TODO un histogram sondage politique pour qui voteront les electeurs
        		

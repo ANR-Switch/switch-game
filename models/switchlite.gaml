@@ -84,7 +84,7 @@ global {
 	
 	// PARAMETERS of the simulator (sliders in interface)
 	//float move_proba;			// proba that agents move
-	float roads_degrade_speed <- 0.1;  // factor of road degradation over time
+	//float roads_degrade_speed <- 0.1;  // factor of road degradation over time
 	float accident_proba <- 0.1;		// probability of accident (will be weighed by congestion)
 	// weather (TODO rain yes/no, cold yes/no), or float value from -1 (desagreeable) to +1 (very agreeable)
 	float weather <- 0.5 min: 0.0 max: 1.0;
@@ -105,7 +105,7 @@ global {
 	// parameters affecting which transports modes are available to who
 	float percent_has_bike <- 0.7 min: 0.0 max: 1.0;  // to be updated by policies to help buy a bike/ train to cycle
 	float percent_has_car <- 0.9 min: 0.0 max: 1.0;   // to be updated by policies to forbid some cars
-	float percent_can_walk <- 0.5 min: 0.0 max: 1.0;  // velo cargo
+	//float percent_can_walk <- 0.5 min: 0.0 max: 1.0;  // velo cargo
 	
 	// PARAMETERS OF BUS / PUBLIC TRANSPORT
 	// FIXME ce paramètre est différent, ce n'est pas un attribut de la population mais de la couverture du réseau de bus
@@ -127,19 +127,17 @@ global {
 	map<int,int> actions_costs;
 	
 	// INDICATORS - to be displayed in game interface
-	// bouchons / taux d'utilisation des routes
-	float indic_congestion <- 1.0 min: 0.01 max: 1.0; // update: (road mean_of each.speed_coeff);
 	// en fonction de l'infrastructure et du % d'utilisateurs de la voiture
 	int speed_limit <- 50;
 	// indicateur de temps de trajet moyen
-	float indic_triptime <- 1.0 min: 0.0 max: 1.0;
+	//float indic_triptime <- 1.0 min: 0.0 max: 1.0;
 	
 	// pollution (augmentée par les voitures, diminuée par les arbres)
 	float indic_pollution <- 0.0;   // update: 0.01 * (cell mean_of each.pollution) ;
 	// nombre d'arbres plantés (sur chaque cellule)
 	int indic_trees <- 0;
 	// damage on roads
-	float avg_damage <- 0.0;
+	//float avg_damage <- 0.0;
 	//int nb_roads_damaged <- 0;
 	// accident rate (per number of trips)
 	float accident_rate <- 0.0 min:0.0 max:1.0;
@@ -157,13 +155,11 @@ global {
 	// INFRASTRUCTURES
 	// capacité des routes (selon que voies dédiées aux bus / vélos / voitures)
 	float indic_carpark <- 1.0;
-	float road_infrastructure <- 0.8;
-	// % de routes équipées de pistes cyclables
-	float cycling_infrastructure <- 0.1;
-	// pedestrian infrastructure / sidewalk size
-	float pedestrian_infrastructure <- 0.2;
-	// bus dedicated lanes
-	float bus_infrastructure <- 0.1;
+	map<int,float> infrastructure_level;
+	// utilisation des infrastructures (en % des trajets)
+	map<int,float> infrastructure_usage;
+	// bouchons / taux d'utilisation des routes
+	//float indic_congestion <- 1.0 min: 0.01 max: 1.0; // update: (road mean_of each.speed_coeff);
 	
 	// count of distance / trips per year / overall 
 	//map<int,int> total_km_travelled; // plus de distance
@@ -216,7 +212,14 @@ global {
 			total_trips[i] <- 0;
 			city_modes[i] <- 1.0;
 		}
-		
+		infrastructure_level[CAR] <- 0.8;
+		// % de routes équipées de pistes cyclables
+		infrastructure_level[BICYCLE] <- 0.1;
+		// pedestrian infrastructure / sidewalk size
+		infrastructure_level[WALK] <- 0.2;
+		// bus dedicated lanes
+		infrastructure_level[BUS] <- 0.1;
+	
 		// candidats et votes initiaux
 		put "Mayor Toto" at: 0 in: candidates;
 		put "Bambi" at: ECOLO in: candidates;
@@ -289,10 +292,21 @@ global {
 		// ONGOING: revoir tous les indicateurs en fonction des actions dispos !
 		// ou bien: les actions modifient directement les indicateurs et il n'y a plus de reflex update
 		
-		//indic_circulation <- (road mean_of each.speed_coeff) with_precision 2;
-		indic_congestion <- max([0,(year_trips[CAR] / length(people)) - road_infrastructure]);
+		/* *************************************************************** */
+		/* ******* INDICATEUR ESSENTIEL 1                          ******* */
+		/* ******* SANTE HEALTH FITNESS SANTE HEALTH FITNESS SANTE ******* */
+		/* *************************************************************** */
+	
+		// moyenne de la santé des citoyens (impactée par sédentarité et pollution)
+		avg_fitness <- people mean_of each.fitness;
+		// joue sur le confort du vélo et marche
 		
-		//indic_pollution <- 0.01 * (cell mean_of each.pollution) with_precision 2;
+	
+		/* *************************************************************** */
+		/* ******* INDICATEUR ESSENTIEL 2                          ******* */
+		/* ******* POLLUTION POLLUTION POLLUTION                   ******* */
+		/* *************************************************************** */
+		
 		// pollution augmentée par les km de chaque mode
 		loop mode over: transport_modes {
 			indic_pollution <- indic_pollution + 0.01 * pollution_modes[mode] * year_trips[mode];
@@ -302,13 +316,12 @@ global {
 		indic_pollution <- indic_pollution - 0.1 * indic_trees;
 		indic_pollution <- min([1,indic_pollution]);
 		
-		indic_triptime <- people mean_of (values_modes[TIME][each.mobility_mode]);
 		
-		avg_fitness <- people mean_of each.fitness;
-		
-		// damage with time
-		avg_damage <- avg_damage *(1-roads_degrade_speed);
-		
+		/* *************************************************************** */
+		/* ******* INDICATEUR ESSENTIEL 3                          ******* */
+		/* ******* ACCIDENTS ACCIDENTS ACCIDENTS                   ******* */
+		/* *************************************************************** */
+			
 		// accidents rate this year (count of accidents divided by number of km) (#trips too low)
 		// TODO accident_proba update selon les aménagements, leur saturation, la cohabitation des modes
 		accident_rate <- 0.0;
@@ -324,23 +337,56 @@ global {
 			accident_rate <- 100*nb_acc / year_trips[CAR];
 		}
 		
+		
+		/* *************************************************************** */
+		/* ******* INDICATEUR ESSENTIEL 4                          ******* */
+		/* ******* HAPPINESS WELL-BEING SATISFACTION HAPPINESS     ******* */
+		/* *************************************************************** */
+		
+		// happiness
+		indic_happiness <- (people mean_of each.happiness) with_precision 2;
+		indic_happy <- (people count each.happy) / length(people);
+		
 		// town safety can randomly decrease if not maintained
 		town_safety <- max([0.1,(town_safety - rnd(0.1))]) with_precision 2;
+		// influences safety of walking
 		
-		// bus congestion in places per people (nb trips in a representative day, wrt number buses * places)
-		bus_affluence <- length(people where (each.mobility_mode = BUS)) / (bus_capacity * bus_frequency);
 		
-		//bus_infrastructure <- length(people where (each.mobility_mode = BUS))/length(people) - bus_infrastructure;
-		// indic_cyclab??
+		/* *************************************************************** */
+		/* ******* INDICATEUR ESSENTIEL 5                          ******* */
+		/* ******* ACCESSIBILITY SOCIAL EQUITY ACCESSIBILITY       ******* */
+		/* *************************************************************** */
+		
+		// accessibilité calculée autrement
+		// dimensionnement des infrastructures par rapport aux besoins ?
+		// par rapport au nombre de people qui voudraient utiliser le mode ?
 		
 		// density of bus stops (per cell)
 		// paramètre au départ, puis l'ajout de bus stop met l'attribut à vrai pour 10 personnes
 		percent_close_bus <- (people count each.has_close_bus) / length(people);     //nb_bus_stops / length(cell);
 		
-		// happiness
-		indic_happiness <- (people mean_of each.happiness) with_precision 2;
-		indic_happy <- (people count each.happy) / length(people);
-		indic_accessibility <- (people count (each.mobility_mode > 0)) / length(people) with_precision 4; 
+		indic_accessibility <- (people count (each.mobility_mode > 0)) / length(people) with_precision 2; 
+		
+		
+
+
+		/* *************************************************************** */
+		/* ******* INDICATEUR ESSENTIEL 6                          ******* */
+		/* ******* INFRASTRUCTURE USAGE - INFRASTRUCTURE USAGE     ******* */
+		/* *************************************************************** */
+		
+		//indic_congestion <- max([0,(year_trips[CAR] / length(people)) - road_infrastructure]);
+		//indic_triptime <- people mean_of (values_modes[TIME][each.mobility_mode]);
+
+		// bus congestion in places per people (nb trips in a representative day, wrt number buses * places)
+		bus_affluence <- length(people where (each.mobility_mode = BUS)) / (bus_capacity * bus_frequency);
+
+		if sum(year_trips.values)>0 {
+			loop m over: transport_modes {infrastructure_usage[m] <- year_trips[m]/sum(year_trips.values);}
+		}
+		else {
+			loop m over: transport_modes {infrastructure_usage[m] <- 0.0;}
+		}
 		
 		// at the end, to first use last year trips to update indicators
 		// add km travelled last year and reset (even on last year)
@@ -358,7 +404,7 @@ global {
 		// cars
 		//values_modes[ECOLO][CAR] <- 0.0;  	// depends on pollution ? 1.0 - pollution_modes[CAR]/10;
 		values_modes[EASY][CAR] <- indic_carpark; 	// depends on parking
-		values_modes[TIME][CAR] <- 1-indic_congestion ;	 	// depends on congestion, average duration of trips?
+		values_modes[TIME][CAR] <- 1-infrastructure_usage[CAR] ;	 	// depends on congestion, average duration of trips?
 		values_modes[PRICE][CAR] <- max([0,1-petrol_price/2]); 	// petrol price and tax rate
 		//values_modes[COMFORT][CAR] <- 1-avg_damage; 	// depends on roads status 
 		values_modes[COMFORT][CAR] <- min([1,speed_limit/50]);  // depends on speed limit
@@ -370,20 +416,20 @@ global {
 		//values_modes[TIME][BICYCLE] <- 0.8;		// always good? depends a bit on congestion? on hills? on fitness
 		//values_modes[PRICE][BICYCLE] <- 0.1;    // always gratis
 		values_modes[COMFORT][BICYCLE] <- max([0,(1-indic_pollution)*weather]);    // depends on hills, length of trip, age of people, pollution
-		values_modes[SAFE][BICYCLE] <- mean([1-accident_rate,cycling_infrastructure]); // depends on cycling lanes ; accidents against bikes
+		values_modes[SAFE][BICYCLE] <- mean([1-accident_rate,infrastructure_level[BICYCLE]]); // depends on cycling lanes ; accidents against bikes
 		
 		// walk
 		//values_modes[ECOLO][WALK] <- 1.0;		// always ecolo
 		values_modes[EASY][WALK] <- avg_fitness; 		// always easy
 		//values_modes[TIME][WALK] <- 0.1;		// always very slow
 		//values_modes[PRICE][WALK] <- 1.0;		// always gratis
-		values_modes[COMFORT][WALK] <- 0.1*indic_trees * pedestrian_infrastructure ; 	// depends on trees and weather and carparks
-		values_modes[SAFE][WALK] <- town_safety * pedestrian_infrastructure;		// depends on accidents against pedestrians? + town safety (cameras etc)
+		values_modes[COMFORT][WALK] <- 0.1*indic_trees * infrastructure_level[WALK] ; 	// depends on trees and weather and carparks
+		values_modes[SAFE][WALK] <- town_safety * infrastructure_level[WALK];		// depends on accidents against pedestrians? + town safety (cameras etc)
 		
 		// bus
 		//values_modes[ECOLO][BUS] <- 0.8;		// depends on bus capacity (the higher the best) 
 		values_modes[EASY][BUS] <- percent_close_bus; 		// depends on number of DENSITY transfers, frequency, number of stops...
-		values_modes[TIME][BUS] <- bus_frequency * bus_infrastructure;			// depends on FREQUENCY , distance to stop...
+		values_modes[TIME][BUS] <- bus_frequency * infrastructure_level[BUS];			// depends on FREQUENCY , distance to stop...
 		values_modes[PRICE][BUS] <- max([0,1-bus_price]);		// depends on ticket/rego price
 		values_modes[COMFORT][BUS] <- 1-bus_affluence; 		// depends on capacity and number of actual passengers
 		values_modes[SAFE][BUS] <- town_safety;			// depends on town safety
@@ -470,8 +516,13 @@ global {
 		budget <- budget - cost;
 		
 		// prix d'entretien des routes? ou bien c'est une action volontaire
-		cost <- 100*road_infrastructure;
+		cost <- 100*infrastructure_level[CAR];
 		write("cost of roads "+string(cost));
+		budget <- budget - cost;
+		
+		// damage caused by cars and buses
+		cost <- 10*year_trips[CAR] + 20*min([1,year_trips[BUS]/bus_capacity]);
+		write("cost of road maintainance "+string(cost));
 		budget <- budget - cost;
 		
 		// prix d'entretien des parkings?
@@ -802,6 +853,8 @@ species people { //} skills: [moving]{
 	
 	// budget gaussian
 	float budget <- gauss(100.0, 40.0);
+	// TODO salaire every year added to budget
+	// TODO pay taxes based on salary
 	
 	int mobility_mode; // among: [BICYCLE, CAR, BUS, WALK];
 	float happiness <- 0.77 min: 0.0 max: 1.0;
@@ -866,7 +919,8 @@ species people { //} skills: [moving]{
 		has_car <- flip(percent_has_car);
 		has_close_bus <- flip(percent_close_bus);
 		// can always walk if has no other way to go
-		can_walk <- flip(percent_can_walk) or (not has_bike and not has_car and not has_close_bus);
+		//can_walk <- flip(percent_can_walk) or (not has_bike and not has_car and not has_close_bus);
+		can_walk <- fitness > 0.3;
 	}
 
 
@@ -934,9 +988,9 @@ species people { //} skills: [moving]{
 	bool can_use(int mode) {
 		switch mode {
 			// FIXME ONGOING 1 JULY - add can_walk constraint but check most people can still move...
-			match BUS {return has_close_bus and can_walk;}  //  and can_walk
+			match BUS {return has_close_bus and can_walk and bus_price*20<budget;}  //  and can_walk
 			match BICYCLE {return has_bike and can_walk;}  //  and can_walk
-			match CAR {return has_car;}
+			match CAR {return has_car and petrol_price*20 < budget;} //
 			match WALK {return can_walk;} // depend on age?
 			match 0 {return false;}
 		}
@@ -1068,6 +1122,29 @@ species people { //} skills: [moving]{
 	}
 	
 	
+	// buy a transport mode
+	reflex buy_bicycle when: preferred_mode() = BICYCLE and not has_bike {
+		if budget>20 {
+			has_bike <- true;
+			budget <- budget - 20;
+		}
+	}
+	
+	reflex buy_car when: preferred_mode() = CAR and not has_car {
+		if budget>70 {
+			has_car <- true;
+			budget <- budget - 70;
+		}
+	}
+	
+	
+	reflex sell_car when: has_car and preferred_mode() != CAR and mobility_mode != CAR {
+		if budget < 20 {
+			has_car <- false;
+			budget <- budget + 50;
+		}
+	}
+	
 	
 	// ************************************************
 	// ***       ELECTIONS - CHOOSE CANDIDATE       ***
@@ -1195,7 +1272,7 @@ species bouton //width:4 height:7
 	int CHANGE_BUS_PRICE <- 8;
 	int TAX_CARPARK <- 9;
 	int ADD_BUS_STOP <- 10;
-	int REPAIR_ROAD <- 11;
+	//int REPAIR_ROAD <- 11;
 	int BUILD_CARPARK <- 12;
 	int IMPROVE_SAFETY <- 13;
 	int CHANGE_SPEED <- 14;
@@ -1208,9 +1285,8 @@ species bouton //width:4 height:7
 	int CAR_LANE <- 21;
 	int CHANGE_TAX_RATE <- 22;
 	
-
 	action dispatch {
-		bool done_action;
+		bool done_action <- true;
 		switch action_nb {
 			// TITLES
 			match TITLE_MONEY {write("In this columns are actions to modify prices or use monetary incentives. \n Your budget = "+budget);}
@@ -1229,7 +1305,7 @@ species bouton //width:4 height:7
 			// INFRASTRUCTURES
 			match BUILD_CYCLE_LANE { done_action <- build_cycling_lane(); }			
 			match PLANT_TREES { done_action <- plant_trees(); }
-			match REPAIR_ROAD { do repair_road; }
+			//match REPAIR_ROAD { do repair_road; }
 			match BUILD_CARPARK { do build_carpark; }
 			match BUS_LANE {done_action <- dedicate_buslane();}
 			match CAR_LANE {done_action <- dedicate_carlane();}
@@ -1397,9 +1473,9 @@ species bouton //width:4 height:7
 	// TODO different types: lane, paint on road/sidewalk, with different costs but different impacts on security
 	bool build_cycling_lane {
 		write("BUILD - Build cycling lane");
-		if road_infrastructure>0.1 and cycling_infrastructure<1 {
-			cycling_infrastructure <- cycling_infrastructure + 0.1;
-			road_infrastructure <- road_infrastructure - 0.1;
+		if infrastructure_level[CAR]>0.1 and infrastructure_level[BICYCLE]<1 {
+			infrastructure_level[BICYCLE] <- infrastructure_level[BICYCLE] + 0.1;
+			infrastructure_level[CAR] <- infrastructure_level[CAR] - 0.1;
 			return true;
 		}
 		// cancel budget decrease (will be done per each cell clicked)
@@ -1412,9 +1488,9 @@ species bouton //width:4 height:7
 	
 	bool dedicate_buslane {
 		write ("BUILD - Dedicated bus lane");
-		if road_infrastructure >0.1 and bus_infrastructure<1 {
-			cycling_infrastructure <- cycling_infrastructure + 0.1;
-			road_infrastructure <- road_infrastructure - 0.1;
+		if infrastructure_level[CAR] >0.1 and infrastructure_level[BUS]<1 {
+			infrastructure_level[BUS] <- infrastructure_level[BUS] + 0.1;
+			infrastructure_level[CAR] <- infrastructure_level[CAR] - 0.1;
 			return true;
 		}
 		else {
@@ -1425,14 +1501,14 @@ species bouton //width:4 height:7
 	
 	bool dedicate_carlane {
 		write ("BUILD - Dedicated car lane");
-		if road_infrastructure<1 and cycling_infrastructure >0.1 {
-			road_infrastructure <- road_infrastructure + 0.1;
-			cycling_infrastructure <- cycling_infrastructure - 0.1;
+		if infrastructure_level[CAR]<1 and infrastructure_level[BICYCLE] >0.1 {
+			infrastructure_level[CAR] <- infrastructure_level[CAR] + 0.1;
+			infrastructure_level[BICYCLE] <- infrastructure_level[BICYCLE] - 0.1;
 			return true;
 		}
-		else if road_infrastructure<1 and bus_infrastructure>0.1 {
-			road_infrastructure <- road_infrastructure + 0.1;
-			bus_infrastructure <- bus_infrastructure - 0.1;
+		else if infrastructure_level[CAR]<1 and infrastructure_level[BUS]>0.1 {
+			infrastructure_level[CAR] <- infrastructure_level[CAR] + 0.1;
+			infrastructure_level[BUS] <- infrastructure_level[BUS] - 0.1;
 			return true;
 		}
 		else {
@@ -1458,21 +1534,7 @@ species bouton //width:4 height:7
 		//budget <- budget + actions_costs[action_type];
 	}
 	
-	// TODO : il n'y aura plus de species road, c'est un niveau général de dégâts qu'il faut améliorer
-	// avec un coût par point de dégât	
-	action repair_road {
-		write("BUILD - repair roads");
-		avg_damage <- avg_damage -1;
-		if avg_damage < 0 {avg_damage <- 0.0;}
-	}
-	
-	// NOT CALLED yet (no button)
-	action build_road {
-		write("BUILD - build new road for cars");
-		road_infrastructure <- road_infrastructure + 0.1;
-		cycling_infrastructure <- cycling_infrastructure - 0.1;
-		// FIXME decrease bus / bike infrastructure
-	}
+
 	
 	// TODO could decrease it ? if not paying for it. For now decreases over time, so must pay regularly
 	action improve_town_safety {
@@ -1640,12 +1702,12 @@ experiment play type: gui {
 				// indicateurs globaux
 				float d <- 150 #px;
 				//draw "Global indicators" at: {d, 30#px} color: #black;
-				draw " - Quality of traffic "+indic_congestion*100+ " %" at: {d, 60#px} color: #black;
+				draw " - Quality of car traffic "+infrastructure_usage[CAR]*100+ " %" at: {d, 60#px} color: #black;
 				draw " - Air pollution "+indic_pollution*100+ " %" at: {d, 80#px} color: #black;
-				draw " - % of cycling lanes on roads "+100*cycling_infrastructure + " %" at: {d, 100#px} color: #black;
+				draw " - % of cycling lanes on roads "+100*infrastructure_level[BICYCLE] + " %" at: {d, 100#px} color: #black;
 				draw " - Number of trees " + indic_trees at: {d, 120#px} color: #black;
 				draw " - "+ sum(year_trips.values) + " trips" at: {d, 140#px} color: #black; // over "+ world.nb_km_year()+" km
-				draw " - "+avg_damage+"% damage avg" at: {d, 160#px} color: #red; // nb_roads_damaged+" roads damaged ("+
+				//draw " - "+avg_damage+"% damage avg" at: {d, 160#px} color: #red; // nb_roads_damaged+" roads damaged ("+
 				draw " - Accident rate : "+accident_rate with_precision 2 at:{d,180#px} color: #red;
 				draw " - Town safety : "+town_safety at: {d,200#px} color: #blue;
 				draw " - Bus density : "+percent_close_bus*100+" %" at: {d, 220#px} color: #blue;
@@ -1685,7 +1747,7 @@ experiment play type: gui {
 		
 		display "Indicateurs" {
 			chart "INDIC" type: histogram {
-				data "Trip time" value: indic_triptime;
+				//data "Trip time" value: indic_triptime;
 				data "Pollution" value: indic_pollution;
 				data "Health" value: avg_fitness;
 				data "Happiness" value: (people mean_of each.happiness);
@@ -1706,20 +1768,19 @@ experiment play type: gui {
     	   		data "City" color: #purple value: [city_criteria[ECOLO],city_criteria[PRICE],city_criteria[COMFORT],city_criteria[SAFE],city_criteria[EASY],city_criteria[TIME]];
        		}// end chart
        		
-       		// radar chart evaluation de la ville sur les 6 critères
-   	    	/*chart "CITY" type: radar  size:{0.5,0.5} position:{0.5,0}  background: #white axes:#black 
-		    	    x_serie_labels: ["ecolo", "cheap", "comfort", "safe","easy","fast"] series_label_position: xaxis {
-    			   		data "city"  color:#purple //  value: city_criteria.values  
-    			   		value: [city_criteria[ECOLO],city_criteria[PRICE],city_criteria[COMFORT],city_criteria[SAFE],city_criteria[EASY],city_criteria[TIME]];
-       		}// end chart
-       		*/
-       		
-       		chart "Infrastructures" size: {0.5,0.5} position: {0.5,0} type: histogram
+       		chart "Infrastructures levels/usage" size: {0.5,0.5} position: {0.5,0} type: histogram
        		{
-       			data "Bike" value: cycling_infrastructure color: #green;
-       			data "Walk" value: pedestrian_infrastructure color: #pink;
-       			data "Bus" value: bus_infrastructure color: #blue;
-       			data "Car" value: road_infrastructure color: #red;
+       			data "Bike #" value: infrastructure_level[BICYCLE] color: #green;
+       			data "Bike %" value: infrastructure_usage[BICYCLE] color: #green;
+       			
+       			data "Walk #" value: infrastructure_level[WALK] color: #pink;
+       			data "Walk %" value: infrastructure_usage[WALK] color: #pink;
+       			
+       			data "Bus #" value: infrastructure_level[BUS] color: #blue;
+       			data "Bus %" value: infrastructure_usage[BUS] color: #blue;
+       			
+       			data "Car #" value: infrastructure_level[CAR] color: #red;
+       			data "Car %" value: infrastructure_usage[CAR] color: #red;
        		}
        		
        		// radar chart evaluation de chaque mode de transport sur la ville

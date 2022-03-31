@@ -156,14 +156,14 @@ global {
 	
 	// INFRASTRUCTURES
 	// capacité des routes (selon que voies dédiées aux bus / vélos / voitures)
-	float indic_carpark <- 0.9;
-	float road_infrastructure <- 0.9;
+	float indic_carpark <- 1.0;
+	float road_infrastructure <- 0.8;
 	// % de routes équipées de pistes cyclables
 	float cycling_infrastructure <- 0.1;
 	// pedestrian infrastructure / sidewalk size
 	float pedestrian_infrastructure <- 0.2;
 	// bus dedicated lanes
-	float bus_infrastructure <- 0.0;
+	float bus_infrastructure <- 0.1;
 	
 	// count of distance / trips per year / overall 
 	//map<int,int> total_km_travelled; // plus de distance
@@ -184,11 +184,11 @@ global {
 	map<int,float> city_modes;
 	
 	// INTERFACE - IMAGES ON BUTTONS
-	string dossierImages <-  "../includes/imgs/" ;
+	//string dossierImages <-  "../includes/imgs/" ;
 	int nbcol <- 4;
-	list<image_file> images <- [];	// from sprite, 4 colonnes de 7 boutons	
+	//list<image_file> images <- [];	// from sprite, 4 colonnes de 7 boutons	
 	// which action was clicked in interface
-	int action_type;
+	//int action_type;
 	
 	// ************************
 	// ***  INITIALISATION  ***
@@ -196,8 +196,7 @@ global {
 		
 	init {
 		// buttons with action number
-		do init_buttons;
-		do init_actions;
+		do create_buttons;
 		
 		// init values of criteria for each mode (for now random)
 		do init_values_modes;
@@ -284,7 +283,6 @@ global {
 	// *** INDICATORS and UPDATE ***
 	// *****************************
 	
-
 	// update indicators every (start of) year
 	// TODO: à faire directement dans chaque action, sauf ceux qui updatent with time
 	action update_indicators {
@@ -305,10 +303,6 @@ global {
 		indic_pollution <- min([1,indic_pollution]);
 		
 		indic_triptime <- people mean_of (values_modes[TIME][each.mobility_mode]);
-		
-		// done in actions now
-		//indic_cyclability <- (road count each.cycle_lane) / length(road) with_precision 2;
-		//indic_trees <- (cell sum_of each.trees_on_cell);
 		
 		avg_fitness <- people mean_of each.fitness;
 		
@@ -335,6 +329,9 @@ global {
 		
 		// bus congestion in places per people (nb trips in a representative day, wrt number buses * places)
 		bus_affluence <- length(people where (each.mobility_mode = BUS)) / (bus_capacity * bus_frequency);
+		
+		//bus_infrastructure <- length(people where (each.mobility_mode = BUS))/length(people) - bus_infrastructure;
+		// indic_cyclab??
 		
 		// density of bus stops (per cell)
 		// paramètre au départ, puis l'ajout de bus stop met l'attribut à vrai pour 10 personnes
@@ -392,8 +389,6 @@ global {
 		values_modes[SAFE][BUS] <- town_safety;			// depends on town safety
 	}
 	
-	
-
 	
 	// graph distrib of happiness / of scores / of modes
 	reflex update_distrib {
@@ -491,392 +486,206 @@ global {
 	// ***     INTERACTIVITY & PLAYER ACTIONS     ***
 	// **********************************************
 	
-	// interactivity: management of buttons
-	action init_buttons	{
-		int inc<-0;
-		int inc2<-0;
-		// initialise action number associated with each button
-		ask bouton {
-			action_nb<-inc;
-			inc<-inc+1;
-			inc2<-inc2+1;
+	action create_buttons {
+		string dossierImages <-  "../includes/imgs/" ;
+		
+		// TITLES
+		create bouton {
+			action_nb <- TITLE_MONEY;
+			col <- 1;
+			line <- 0;
+			ma_description <- "Actions to change taxes";
+			mon_image <- image_file(dossierImages +"dollar2.png");
+			cost <- 0;
 		}
-	}
-	
-	// specify image and cost of each action
-	// costs of actions - set in advance in a map here, or in the big switch
-	// index = action_type (0-1-2-3 = title, 4-20 = actions)
-	action init_actions{
-		// ligne 1: boutons de titre - col 1 MONEY, col 2 BUILD, col 3 LEGAL, col 4 COMM
-		add image_file(dossierImages +"dollar2.png") to: images;
-		add image_file(dossierImages +"build1.png") to: images;
-		add image_file(dossierImages +"redlight-triangle.jpg") to: images;
-		add image_file(dossierImages +"comm.jpeg") to: images;
+		create bouton {
+			action_nb <- TITLE_INFRA;
+			col <- 2;
+			line <- 0;
+			ma_description <- "Actions on infrastructures";
+			mon_image <- image_file(dossierImages +"build1.png");
+			cost <- 0;
+		}
+		create bouton {
+			action_nb <- TITLE_LAWS;
+			col <- 3;
+			line <- 0;
+			ma_description <- "Actions to update laws";
+			mon_image <- image_file(dossierImages +"redlight-triangle.jpg");
+			cost <- 0;
+		}
+		create bouton {
+			action_nb <- TITLE_COMM;
+			col <- 4;
+			line <- 0;
+			ma_description <- "Actions of communication";
+			mon_image <- image_file(dossierImages +"comm.jpeg");
+			cost <- 0;
+		}
 		
-		// ligne 2: premiers boutons de chaque colonne (actions 3-4-5)
-		add image_file(dossierImages +"petrol-price.jpeg") to: images;
-		put 0  at: 4  in: actions_costs;  // change petrol price
+		// MONEY ACTIONS
+		create bouton {
+			action_nb <- CHANGE_PETROL_PRICE;
+			col <- 1;
+			line <- 1;
+			ma_description <- "change petrol price";
+			mon_image <- image_file(dossierImages +"petrol-price.jpeg");
+			cost <- 0;
+		}
+		create bouton {
+			action_nb <- CHANGE_TAX_RATE;
+			col <- 1;
+			line <- 2;
+			ma_description <- "Change tax rate";
+			mon_image <- image_file(dossierImages + "taxrate.png");
+			cost <- 0;
+		}
+		create bouton {
+			action_nb <- CHANGE_BUS_PRICE;
+			col <- 1;
+			line <- 3;
+			ma_description <- "Change bus price";
+			mon_image <- image_file(dossierImages +"bus-ticket.jpeg");
+			cost <- 0;
+		}
 		
-		add image_file(dossierImages +"cycle-lane.png") to: images;
-		put 10 at: 5  in: actions_costs;  // build cycling lane
+		// INFRASTRUCTURES
+		create bouton {
+			action_nb <- BUILD_CYCLE_LANE;
+			col <- 2;
+			line <- 1;
+			ma_description <- "Build cycling lanes";
+			mon_image <- image_file(dossierImages +"cycle-lane.png");
+			cost <- 10;
+		}
+		create bouton {
+			action_nb <- PLANT_TREES;
+			col <- 2;
+			line <- 2;
+			ma_description <- "Plant some trees";
+			mon_image <- image_file(dossierImages +"arbre.jpeg");
+			cost <- 2;
+		}
+		create bouton {
+			action_nb <- BUILD_CARPARK;
+			col <- 2;
+			line <- 3;
+			ma_description <- "Build carpark";
+			mon_image <- image_file(dossierImages +"carpark.jpeg");
+			cost <- 50;
+		}
+		create bouton {
+			action_nb <- BUS_LANE;
+			mon_image <- image_file(dossierImages + "bus-only.png");
+			col <- 2;
+			line <- 4;
+			ma_description <- "Dedicated bus lane";
+			cost <- 3;
+			// dedicated bus lane
+			//add image_file(dossierImages +"repair-roads.png") to: images; // action 13
+			//put 4  at: 13 in: actions_costs;  // repair road
+		}
+		create bouton {
+			col <- 2;
+			line <- 5;
+			ma_description <- "Dedicated car lane";
+			// dedicated car lane
+			action_nb <- CAR_LANE;
+			mon_image <- image_file(dossierImages + "car-only.png");
+			cost <- 3;
+		}
 		
-		add image_file(dossierImages +"camera.png") to: images; // action 5
-		put 7 at: 6  in: actions_costs;  // improve sefety
 		
-		add image_file(dossierImages +"ecolo.jpeg") to: images;
-		put 1 at: 7 in: actions_costs;
+		// LAWS
+		create bouton {
+			action_nb <- IMPROVE_SAFETY;
+			col <- 3;
+			line <- 1;
+			ma_description <- "Improve town safety";
+			mon_image <- image_file(dossierImages + "camera.png");
+			cost <- 7;
+		}
+		create bouton {
+			action_nb <- CHANGE_SPEED;
+			col <- 3;
+			line <- 2;
+			ma_description <- "Change speed limit";
+			mon_image <- image_file(dossierImages +"speed-limit.png");
+			cost <- 1; 
+		}
+		create bouton {
+			action_nb <- FORBID_OLD_CARS;
+			col <- 3;
+			line <- 3;
+			ma_description <- "Forbid older cars";
+			mon_image <- image_file(dossierImages +"no-car.png");
+			cost <- 1;
+		}
 		
-		// ligne 3
-		add image_file(dossierImages +"taxrate.png") to: images; // action 6 change tax rate
-		put 0  at: 8  in: actions_costs;  // taxrate
-		
-		add image_file(dossierImages +"arbre.jpeg") to: images;
-		put 2  at: 9  in: actions_costs;  // plant trees
-		
-		add image_file(dossierImages +"speed-limit.png") to: images;
-		put 1  at: 10  in: actions_costs; 
-		
-		add image_file(dossierImages +"secu-routiere.jpeg") to: images;
-		put 1 at: 11 in: actions_costs;
-		
-		// ligne 4
-		add image_file(dossierImages +"bus-ticket.jpeg") to: images;
-		add image_file(dossierImages +"repair-roads.png") to: images; // action 13
-		put 4  at: 13 in: actions_costs;  // repair road
-		
-		add image_file(dossierImages +"bus-capacity.png") to: images;
-		put 6 at: 14 in: actions_costs;
-		
-		add image_file(dossierImages +"blanc.png") to: images;
+		// COMM
+		create bouton {
+			action_nb <- COMM_ECOLO;
+			col <- 4;
+			line <- 1;
+			ma_description <- "Promote ecology";
+			mon_image <- image_file(dossierImages + "ecolo.jpeg");
+			cost <- 1;
+		}
+		create bouton {
+			action_nb <- COMM_PRUDENCE;
+			col <- 4;
+			line <- 2;
+			ma_description <- "Promote road code";
+			mon_image <- image_file(dossierImages+"secu-routiere.jpeg");
+			cost <- 1;
+		}
 		// change habits: ask some people to drop their habits, among those who use cars?
+		// forbid adds about cars : decrease their priority
+		// TODO : people have a "vision" about each mode that influences their choice (eg bad opinion about cars / bikes)
+		// communication influences this vision
 		
-		// ligne 5
-		add image_file(dossierImages +"no-car.png") to: images;
-		
-		//add image_file(dossierImages +"roadwork.png") to: images; // action 17
-		add image_file(dossierImages +"carpark.jpeg") to: images; // action 8
-		put 5  at: 17  in: actions_costs;  // allow carpark somewhere
-		
-		// repair all roads: cost depends on number of roads
-		
-		add image_file(dossierImages +"bus-frequency.png") to: images;
-		add image_file(dossierImages +"blanc.png") to: images;
-		
-		// ligne 6
-		add image_file(dossierImages +"blanc.png") to: images;
-		add image_file(dossierImages +"blanc.png") to: images;
-		add image_file(dossierImages +"bus-stop.png") to: images; // action 22
-		put 20 at: 22 in: actions_costs;  // add bus stop
-		
-		add image_file(dossierImages +"blanc.png") to: images;
-		
-		// ligne 7
-		add image_file(dossierImages +"blanc.png") to: images;
-		add image_file(dossierImages +"blanc.png") to: images; // pas d'action ici
-		add image_file(dossierImages +"blanc.png") to: images;
-		add image_file(dossierImages +"blanc.png") to: images;	
-	}
-	
-	// all possible actions, with budget, and effect on values
-	// TODO : XML file for description of the actions?
-	// prevent actions when impossible, and do not deduce budget in that case !
-	action activate_act {
-		list<bouton> selected_but <- bouton overlapping (circle(1) at_location #user_location);
-		ask selected_but {
-			action_type<-action_nb;
-			bord_col<-#yellow;
-			ask bouton {if bouton!=myself {bord_col<-#black;}}
+		// PUBLIC TRANSPORT
+		create bouton {
+			action_nb <- TITLE_NETWORK;
+			col <- 5;
+			line <- 0;
+			ma_description <- "Update public transport";
+			cost <- 0;
+			mon_image <- image_file(dossierImages + "public-transport.jpeg");
 		}
-	
-		// fail if no budget
-		//actions_costs[13] <- actions_costs[10]*length(road where (each.status < 1.0));
-		if actions_costs[action_type] > budget {
-			write("FAIL: this action costs "+actions_costs[action_type]+" but you only have "+budget+" budget left");
+		create bouton {
+			action_nb <- ADD_BUS_STOP;
+			col <- 5;
+			line <- 1;
+			ma_description <- "Add bus stop";
+			cost <- 20;
+			mon_image <- image_file(dossierImages +"bus-stop.png");
 		}
-		// if already maximal: do nothing either, at no cost
-		// case when it works
-		else {
-			bool done_action <- true; // <- false;
+		create bouton {
+			action_nb <- CHANGE_BUS_FREQ;
+			col <- 5;
+			line <- 2;
+			ma_description <- "Change bus frequency";
+			mon_image <- image_file(dossierImages +"bus-frequency.png");
+			cost <- 2;
+		}
+		create bouton {
+			action_nb <- CHANGE_BUS_CAPA;
+			col <- 5;
+			line <- 3;
+			ma_description <- "Change bus capacity";
+			mon_image <- image_file(dossierImages +"bus-capacity.png");
+			cost <- 6;
+		}
 		
-			// giant SWITCH action_type TODO une fois les actions codées
-			switch action_type {
-				match 0 {write("In this columns are actions to modify prices or use monetary incentives. \n Your budget = "+budget);}
-				match 1 {write("In this column are actions to build new infrastructures or modify existing ones");}
-				match 2 {write("In this column you find actions that change laws and regulations in your town");}
-				match 3 {write("In this colum are actions to communicate with the population");}
-			
-				// PRICES
-				match 4 { do change_petrol_price; }
-				match 8 { do change_tax_rate; }
-				match 12 { do change_bus_price; }
-				match 16 { do forbid_old_cars; }
-				match 20 { do tax_carpark;}
-				match 24 {write("PRICES - Action 6");}			
-				
-				// INFRASTRUCTURES
-				match 5 { done_action <- build_cycling_lane(); }
-				match 9 { done_action <- plant_trees(); }
-				match 13 { do repair_road; }
-				match 17 { do build_carpark; }
-				match 21 {write("BUILD - Action 5");}
-				match 25 {write("BUILD - Action 6");}
-			
-				// REGULATIONS
-				match 6  { do improve_town_safety; }
-				match 10 { do change_speed_limit; } 
-				match 14 { do change_bus_frequency; }
-				match 18 { do increase_bus_capacity; }
-				match 22 { do add_bus_stop; }
-				match 26 { write("REGULATION - action 6"); }
-				
-				// COMMUNICATION
-				match 7 { do communicate_ecology; }	
-				match 11 { do communicate_roadsafety; }
-				match 15 {write("COMM - Change habits?");}
-				match 19 {write("COMM - action 4");}
-				match 23 {write("COMM - action 5");}
-				match 27 {write("COMM - action 6");}
-			}
-			
-			// deduce budget if and only if action was performed indeed
-			if (done_action) {
-				budget <- budget - actions_costs[action_type];
-				write("*** Budget = "+budget);
-			}
-			else {
-				write("Action ignored...");
-				write("");
-			}
-		}//end if budget sufficient
-	}//end activate_act
 		
-	
-	// individual actions that will be called by the big match in activate_act
-	
-	// change petrol price (that goes into budget)
-	action change_petrol_price {
-		write("PRICES - Change petrol price");
-		write ("Current petrol price : "+(petrol_price)+"$");
-		float old <- petrol_price;
-		// read user input for new tax rate		
-		map input_values <- user_input(["Petrol price (in $)"::(petrol_price)]);
-		// update president with new tax rate from user input
-		petrol_price <- float(input_values["Petrol price (in $)"]);
-		// user feedback in console
-		write ("New petrol price "+(petrol_price)+"$");
-		// new value of criteria for price obtained as a ratio of the price increase/decrease
-		values_modes[PRICE][CAR] <- min([1,values_modes[PRICE][CAR] * old / petrol_price]) with_precision 2;
+		
+		// position buttons correctly
+		ask bouton {do post;}
 	}
 	
-	action change_tax_rate {
-		write("PRICES - Change tax rate");
-		write ("Previous tax rate : "+(tax_rate)+"%");
-		// read user input for new tax rate		
-		map input_values <- user_input(["Tax rate (in %)"::(tax_rate)]);
-		// update president with new tax rate from user input
-		tax_rate <- float(input_values["Tax rate (in %)"]);
-		// user feedback in console
-		write ("New tax rate "+(tax_rate)+"%.");
-		// change resulting satisfaction of population --> considered in political satisfaction
-	}
+	
 
-	action change_bus_price {
-		write("PRICES - Bus ticket price");
-		// read user input for new bus ticket price
-		string msg <- "Bus ticket price";
-		map input_values <- user_input([msg::(bus_price)]);
-		// update president with new tax rate from user input
-		bus_price <- float(input_values[msg]);
-		// user feedback in console
-		write ("New bus price "+(bus_price)+"");
-	}
-
-	action forbid_old_cars {
-		write("PRICES - Forbid old cars");
-		// to check how accessibility of town evolves
-		// TODO select people with lower budget - allow them an action to change car if theirs is too old
-		ask 300 among (people where (each.has_car)) {
-			has_car <- false; // cannot use the car anymore
-		}
-	}
-
-	action add_bus_stop {
-		write("CODE - Add bus stop");
-		// TODO : augmenter directement le percent_close_bus (ou bien le nommer bus_cover)
-		// TODO: pour l'instant cette variable nb_bus_stops n'a aucun impact nulle part...
-		nb_bus_stops <- nb_bus_stops + 1; // will increase density hence practicity, time
-										
-		// some agents now gain a closer bus stop (about the population of one cell)
-		// attention il y a moins de people que de cells... (1000 contre 2500)
-		ask 10 among (people where ( not each.has_close_bus)) {
-			has_close_bus <- true;
-		}
-	}
-	
-	action increase_bus_capacity {
-		// FIXME can we reduce bus capacity? any change costs money anyway to reorganize buses
-		write("CODE - Bus capacity");
-		// read user input for new bus capa
-		string msg <- "Bus capacity (in people)";
-		int old_capa <- bus_capacity;	
-		map input_values <- user_input([msg::(bus_capacity)]);
-		bus_capacity <- int(input_values[msg]);
-		// if actually changed something
-		if old_capa != bus_capacity {
-			//actions_costs[14] <- 6;
-			// user feedback in console
-			write("New bus capacity : "+bus_capacity) color: #blue;
-			return true;
-		}
-		else {
-			return false;
-		}
-	}
-	
-	// TODO could decrease it if max !
-	action change_bus_frequency {
-		write("CODE - Bus frequency");
-		//if (bus_frequency < 1) {
-			float old_freq <- bus_frequency;
-			// read user input for new bus freq
-			string msg <- "Bus frequency (in %)";
-			map input_values <- user_input([msg::(bus_frequency)]);
-			bus_frequency <- float(input_values[msg]);
-						
-			// does the player lose or gain budget ?
-			if (bus_frequency > old_freq) {
-				actions_costs[11] <- 50 * (bus_frequency - old_freq);
-				write("Increased bus frequency : "+bus_frequency) color: #blue;
-			}
-			else if (bus_frequency < old_freq) {
-				actions_costs[11] <- -50 * (old_freq - bus_frequency);
-				write("Decreased bus frequency : "+bus_frequency) color: #blue;
-			}
-			else {
-				// the player did not change the frequency
-				actions_costs[11] <- 0;
-				write("No change in bus frequency : "+bus_frequency) color: #blue;
-			}					
-		//}
-	}
-	
-	// TODO different types: lane, paint on road/sidewalk, with different costs but different impacts on security
-	bool build_cycling_lane {
-		write("BUILD - Build cycling lane");
-		if road_infrastructure>0.1 and cycling_infrastructure<1 {
-			cycling_infrastructure <- cycling_infrastructure + 0.1;
-			road_infrastructure <- road_infrastructure - 0.1;
-			return true;
-		}
-		// cancel budget decrease (will be done per each cell clicked)
-		//budget <- budget + actions_costs[action_type];
-		// budget will just not be deduced since nothing was done
-		else {
-			return false;
-		}
-	}
-	
-	// TODO needs space, taken away from parking
-	bool plant_trees {
-		write("BUILD - Plant trees");
-		if indic_carpark > 0.1 {
-			write("destroyed some car parks to plant trees");
-			indic_trees <- indic_trees + 1;
-			indic_carpark <- indic_carpark - 0.1;
-			return true;
-		}
-		else {
-			write("No more space to plant trees");
-			return false;
-		}
-		// cancel budget decrease (will be done per each cell clicked)
-		//budget <- budget + actions_costs[action_type];
-	}
-	
-	// TODO : il n'y aura plus de species road, c'est un niveau général de dégâts qu'il faut améliorer
-	// avec un coût par point de dégât	
-	action repair_road {
-		write("BUILD - repair roads");
-		avg_damage <- avg_damage -1;
-		if avg_damage < 0 {avg_damage <- 0.0;}
-	}
-	
-	// NOT CALLED yet (no button)
-	action build_road {
-		write("BUILD - build new road for cars");
-		road_infrastructure <- road_infrastructure + 0.1;
-		cycling_infrastructure <- cycling_infrastructure - 0.1;
-		// FIXME decrease bus / bike infrastructure
-	}
-	
-	// TODO could decrease it ? if not paying for it. For now decreases over time, so must pay regularly
-	action improve_town_safety {
-		write("CODE - Improve safety");
-		//values_modes[SAFE][WALK] <- min([1,values_modes[SAFE][WALK] * 1.1]) with_precision 2;
-		//values_modes[SAFE][BUS] <- min([1,values_modes[SAFE][BUS] * 1.1]) with_precision 2;
-		//budget <- budget - 7;
-		if town_safety < 1.0 {
-			town_safety <- town_safety + 0.1 with_precision 2;
-		}
-		else {
-			write("Safety is already maximal in your town");
-		}
-	}
-	
-	action build_carpark {
-		// build car park: TODO
-		write("CODE - Build carparks (Action 8 : TODO)");
-		
-		if indic_trees >= 10 {
-			indic_trees <- indic_trees - 10;
-			indic_carpark <- indic_carpark + 0.1;
-		}
-		else {
-			// fail
-		}		
-		// TODO: must cut some trees
-	}
-	
-	action tax_carpark {
-		write("MONEY - Tax carparks");
-		
-		// read user input for new bus capa
-		string msg <- "New parking price?";
-		map input_values <- user_input([msg::(parking_price)]);
-		parking_price <- int(input_values[msg]);
-		
-		// TODO : increase mayor's budget based on number of cars
-		//        decreases indiv budget of car drivers 
-	}
-	
-	action communicate_ecology {
-		write ("Communicate about ecology");
-		//prio_ecology <- prio_ecology * 1.2;
-		// ask x of prio_criteria[ECOLO]
-		ask 10 among people where (each.prio_criteria[ECOLO] > 0.5) {
-			prio_criteria[ECOLO] <- min([1,prio_criteria[ECOLO]*1.2]);
-		}
-	}
-	
-	action communicate_roadsafety {
-		write ("Communicate about road safety");
-		// prudence au volant augmente, risque d'accident diminue (provisoirement?)
-		// modifie un attribut indiv de prudence au volant?
-		ask 10 among people where (each.prudence > 0.3) {
-			prudence <- min([1,prudence*1.2]);
-		}
-	}
-	
-	action change_speed_limit {
-		write("Change speed limit in town");
-		string msg <- "New speed limit?";
-		map input_values <- user_input([msg::(speed_limit)]);
-		speed_limit <- int(input_values[msg]);
-		
-		// fait dans le tirage des accidents, pondéré par speed_limit
-		//accident_proba <- min([1,accident_proba * speed_limit/30]);
-	}
-	
 	// ************************************************
 	// ***  INTERACTING WITH POPULATION PRIORITIES  ***	
 	// ************************************************
@@ -972,9 +781,9 @@ global {
 
 //Species to represent the people using the skill moving
 // TODO 2 JULY store past mobility modes, with score, over past years
-species people skills: [moving]{
+species people { //} skills: [moving]{
 	//Target point of the agent
-	point target;
+	//point target;
 	//Probability of leaving the building = PARAMETER
 	//float leaving_proba <- move_proba; //0.05; 
 	
@@ -983,8 +792,8 @@ species people skills: [moving]{
 	// TODO budget par agent pour déterminer prio du prix?
 	
 	// Speed of the agent
-	float speed <- 5 #km/#h;
-	rgb color <- rnd_color(255);
+	//float speed <- 5 #km/#h;
+	//rgb color <- rnd_color(255);
 	
 	// pour test graph histog distrib
 	float age <- gauss(40.0, 15.0);
@@ -1020,6 +829,7 @@ species people skills: [moving]{
 	//int accidents <- 0; // TODO store different counters for each mode (eg 0 accidents in car, 2 accidents on bike)
 	
 	// Constraints = available transports - parameterised proba
+	// TODO update with individual actions to buy / sell mobility mode
 	bool has_bike;
 	bool has_car;
 	bool has_close_bus;
@@ -1043,15 +853,12 @@ species people skills: [moving]{
 		// priority of criteria
 		// TODO paramétrer la moyenne des priorités ou bien la calibrer sur enquêtes réelles
 		// TODO certaines actions (sensibilisation, communication) doivent pouvoir modifier ces prios
-		loop i over: criteria {
-			prio_criteria[i] <- rnd(1.0);
-		}
+		loop i over: criteria {prio_criteria[i] <- rnd(1.0);}
 		
 		// habits of modes - 
 		// FIXME: individuals have an initial habitual mode? or start at 0? or param of scenario? 
 		loop i over: transport_modes {trips_mode[i] <- 0; notes_modes[i]<-1.0;}
 		trips_mode[0] <- 0;  // no mobility, cannot move
-		
 		mobility_mode <- -1;
 		
 		// initial constraints (probabilities defined as parameters)
@@ -1062,14 +869,11 @@ species people skills: [moving]{
 		can_walk <- flip(percent_can_walk) or (not has_bike and not has_car and not has_close_bus);
 	}
 
-	// mettre à jour la matrice de notes des modes de transport (moy pondérée des critères * prio)
-	reflex update_notes {
-		// static note of each mode (changes when global values_modes change (result of player's actions)
-		loop i over: transport_modes {
-			notes_modes[i] <- note_mode(i);
-		}
-	}
-	
+
+
+ 	/* ********************************
+ 	 * *** PEOPLE HABITS - ROUTINES ***
+ 	 ********************************** */
 	
 	// a chance to reset habits completely (= reset trip counts, otherwise habit is re-created immediately)
 	// global proba for any agent to drop their habit at each time step (= year)
@@ -1096,43 +900,17 @@ species people skills: [moving]{
 		}		
 	}
 	
-	// can the individual use a given transport mode
-	bool can_use(int mode) {
-		switch mode {
-			// FIXME ONGOING 1 JULY - add can_walk constraint but check most people can still move...
-			match BUS {return has_close_bus and can_walk;}  //  and can_walk
-			match BICYCLE {return has_bike and can_walk;}  //  and can_walk
-			match CAR {return has_car;}
-			match WALK {return can_walk;} // depend on age?
-			match 0 {return false;}
-		}
-	}
 	
-	
-	// (rational) note of a given mode of transport
-	// SIMPLIF: for now the values of a mode is static for all agents (kind of global average)
-	// TODO : to be weighed by habit, emotions (eg fear of accidents), social pressure, constraints... (which are individual)
-	float note_mode(int mode) {
-		float note <- 0.0;
-		loop c over: criteria {
-			note <- note + values_modes[c][mode] * prio_criteria[c];
-		}
-		note <- note / sum(prio_criteria.values);
 		
-		return note with_precision 2;
-	}
-
-		
-		
-	/* ********* ACTION SELECTION - PEOPLE BEHAVIOUR **************** */	
+	/* *******************************************
+	 * *** ACTION SELECTION - PEOPLE BEHAVIOUR ***
+	 * ******************************************* */	
 		
 	// behaviour of citizens coded in actions 
 	// triggered when the player has finished doing their actions with their budget
 	// (~ one representative day ?) TODO: week days vs week-ends + call in a year loop
 	action citizens_behaviour {
-		
-		// time scale
-		// il faudrait faire agir les people 365 fois (1 trip par jour sur un an)
+		// time scale: il faudrait faire agir les people 365 fois (1 trip par jour sur un an)
 		// avant de redonner la main au joueur pour l'année suivante
 		// done 4 March 2022 : 200 choix de déplacement dans l'historique, mais 1 seule animation
 		
@@ -1145,6 +923,45 @@ species people skills: [moving]{
 		// SIMPLIF 29 MARCH: no moves, citizens only choose their mobility mode
 		put [happiness, happy?1.0:0.0] at: cycle in: history_happiness;
 	}	
+	
+	
+	/**********************************
+	 * *** REASONING ABOUT MOBILITY *** 
+	 * ******************************** */
+	
+	// can the individual use a given transport mode
+	// TODO consider money limitations as well
+	bool can_use(int mode) {
+		switch mode {
+			// FIXME ONGOING 1 JULY - add can_walk constraint but check most people can still move...
+			match BUS {return has_close_bus and can_walk;}  //  and can_walk
+			match BICYCLE {return has_bike and can_walk;}  //  and can_walk
+			match CAR {return has_car;}
+			match WALK {return can_walk;} // depend on age?
+			match 0 {return false;}
+		}
+	}
+	
+	// mettre à jour la matrice de notes des modes de transport (moy pondérée des critères * prio)
+	reflex update_notes {
+		// static note of each mode (changes when global values_modes change (result of player's actions)
+		loop i over: transport_modes {
+			notes_modes[i] <- note_mode(i);
+		}
+	}
+		
+	// (rational) note of a given mode of transport
+	// SIMPLIF: for now the values of a mode is static for all agents (kind of global average)
+	// TODO : to be weighed by habit, emotions (eg fear of accidents), social pressure, constraints... (which are individual)
+	float note_mode(int mode) {
+		float note <- 0.0;
+		loop c over: criteria {
+			note <- note + values_modes[c][mode] * prio_criteria[c];
+		}
+		note <- note / sum(prio_criteria.values);
+		
+		return note with_precision 2;
+	}
 	
 	// preferred criteria (highest priority)
 	int preferred_criteria {
@@ -1225,9 +1042,12 @@ species people skills: [moving]{
 	}	
 		
 	
+	/******************
+	 * *** REFLEXES ***
+	 * **************** */
+	
 	// NEW 29 MARCH 22 : removed mobility to simplify computation
 	// need to compute pollution and accidents manually based on number of trips
-	
 
 	reflex update_fitness {
 		// impact de la sédentarité
@@ -1254,7 +1074,6 @@ species people skills: [moving]{
 	// ************************************************
 	
 	// measure political satisfaction after one mandate
-
 	
 	// pour les sondages
 	reflex political_satisfaction {
@@ -1323,19 +1142,407 @@ species people skills: [moving]{
 
 
 
-/* ******************************************************************
+/*******************************************************************
  *******    BOUTONS                                   ***
 *********************************************************************/
-grid bouton width:4 height:7 
+
+// ONGOING créer les boutons 1 par 1 avec leur action, leur texte, leur image
+
+//species bouton //width:4 height:7 
+species bouton //width:4 height:7
 {
 	int action_nb;
-	float img_h <-world.shape.height/8;
-	float img_l <-world.shape.width/5;
+	int col;
+	int line;
+	float img_h <-world.shape.height/10;
+	float img_l <-world.shape.width/10;
 	rgb bord_col<-#black;
-
-	aspect normal {
-		draw images[action_nb] size:{img_l/2,img_h/2};
+	string ma_description;
+	image_file mon_image;
+	//bool clickable <- true;
+	int cost <- 0;
+	
+	bool display_info <- false; // update: self overlaps (circle(2) at_location #user_location);
+	//point info_location <- location;
+	
+	// à appeler à la création pour positionner le bouton
+	action post {
+		location <- {10+col*img_l,10+line*img_h};
+		shape <- circle(4);
+		if cost > 0 {ma_description <- ma_description+"("+string(cost)+")";}
 	}
+	
+	action activate {
+		if(self overlaps (circle(2) at_location #user_location)) {
+			write(ma_description);
+			write("COST = "+string(cost));
+			if budget >= cost {do dispatch;}
+			else {write("Insufficient budget...");}
+		}
+	}
+	
+	action inform {display_info <- self overlaps (circle(2) at_location #user_location);}
+	
+	int TITLE_MONEY <- 0;
+	int TITLE_INFRA <- 1;
+	int TITLE_LAWS <- 2;
+	int TITLE_COMM <- 3;
+	int TITLE_NETWORK <- 4;
+	
+	int CHANGE_PETROL_PRICE <- 5;
+	int BUILD_CYCLE_LANE <- 6;
+	int PLANT_TREES <- 7;
+	int CHANGE_BUS_PRICE <- 8;
+	int TAX_CARPARK <- 9;
+	int ADD_BUS_STOP <- 10;
+	int REPAIR_ROAD <- 11;
+	int BUILD_CARPARK <- 12;
+	int IMPROVE_SAFETY <- 13;
+	int CHANGE_SPEED <- 14;
+	int CHANGE_BUS_FREQ <- 15;
+	int CHANGE_BUS_CAPA <- 16;
+	int FORBID_OLD_CARS <- 17;
+	int COMM_ECOLO <- 18;
+	int COMM_PRUDENCE <- 19;
+	int BUS_LANE <- 20;
+	int CAR_LANE <- 21;
+	int CHANGE_TAX_RATE <- 22;
+	
+
+	action dispatch {
+		bool done_action;
+		switch action_nb {
+			// TITLES
+			match TITLE_MONEY {write("In this columns are actions to modify prices or use monetary incentives. \n Your budget = "+budget);}
+			match TITLE_INFRA {write("In this column are actions to build new infrastructures or modify existing ones");}
+			match TITLE_LAWS {write("In this column you find actions that change laws and regulations in your town");}
+			match TITLE_COMM {write("In this colum are actions to communicate with the population");}
+			
+			// MONEY
+			match CHANGE_TAX_RATE {do change_tax_rate;}
+			match CHANGE_PETROL_PRICE {do change_petrol_price;}	
+			match CHANGE_BUS_PRICE { do change_bus_price; }
+			match TAX_CARPARK { do tax_carpark;}
+			
+			//match 24 {write("PRICES - Action 6");}			
+				
+			// INFRASTRUCTURES
+			match BUILD_CYCLE_LANE { done_action <- build_cycling_lane(); }			
+			match PLANT_TREES { done_action <- plant_trees(); }
+			match REPAIR_ROAD { do repair_road; }
+			match BUILD_CARPARK { do build_carpark; }
+			match BUS_LANE {done_action <- dedicate_buslane();}
+			match CAR_LANE {done_action <- dedicate_carlane();}
+			
+			// TODO improve infrastructures for pedestrians, buses (dedicated_bus_lane
+			
+			//match 21 {write("BUILD - Action 5");}
+			//match 25 {write("BUILD - Action 6");}
+			
+			// REGULATIONS
+			match IMPROVE_SAFETY  { do improve_town_safety; }
+			match CHANGE_SPEED { do change_speed_limit; }
+			match FORBID_OLD_CARS { do forbid_old_cars; }
+				
+			//match 26 { write("REGULATION - action 6"); }
+				
+			// COMMUNICATION
+			match COMM_ECOLO { do communicate_ecology; }	
+			match COMM_PRUDENCE { do communicate_roadsafety; }
+			
+			//match 15 {write("COMM - Change habits?");}
+			//match 19 {write("COMM - action 4");}
+			//match 23 {write("COMM - action 5");}
+			//match 27 {write("COMM - action 6");}
+			
+			// PUBLIC TRANSPORT
+			match ADD_BUS_STOP { do add_bus_stop; }
+			match CHANGE_BUS_CAPA { do increase_bus_capacity; }
+			match CHANGE_BUS_FREQ { do change_bus_frequency; }
+		}
+		if (done_action) {
+			budget <- budget - cost;
+			write("New budget: "+string(budget));
+		}
+		else {write("Action ignored...");}
+	}
+	
+	// affichage avec info-bulles au survol
+	// FIXME : infobulle s'affiche en-dessous des autres boutons: illisible
+	aspect normal {
+		draw mon_image size:{img_l/2,img_h/2}; 
+		draw shape border: #black color: #transparent;
+	}
+	
+	// sur un layer par-dessus les boutons, pour être toujours lisible en surcouche
+	aspect info {
+		if (display_info){
+			draw rectangle(length(ma_description)+5,4) at: #user_location border: #black color: #yellow;
+			draw ma_description at: #user_location-{10,0} color: #red;
+		}
+	}
+	
+	/* les actions des différents boutons */
+	// individual actions that will be called by the big match in activate_act
+	
+	// change petrol price (that goes into budget)
+	action change_petrol_price {
+		write("PRICES - Change petrol price");
+		write ("Current petrol price : "+(petrol_price)+"$");
+		float old <- petrol_price;
+		// read user input for new tax rate		
+		map input_values <- user_input(["Petrol price (in $)"::(petrol_price)]);
+		// update president with new tax rate from user input
+		petrol_price <- float(input_values["Petrol price (in $)"]);
+		// user feedback in console
+		write ("New petrol price "+(petrol_price)+"$");
+		// new value of criteria for price obtained as a ratio of the price increase/decrease
+		values_modes[PRICE][CAR] <- min([1,values_modes[PRICE][CAR] * old / petrol_price]) with_precision 2;
+	}
+	
+	action change_tax_rate {
+		write("PRICES - Change tax rate");
+		write ("Previous tax rate : "+(tax_rate)+"%");
+		// read user input for new tax rate		
+		map input_values <- user_input(["Tax rate (in %)"::(tax_rate)]);
+		// update president with new tax rate from user input
+		tax_rate <- float(input_values["Tax rate (in %)"]);
+		// user feedback in console
+		write ("New tax rate "+(tax_rate)+"%.");
+		// change resulting satisfaction of population --> considered in political satisfaction
+	}
+
+	action change_bus_price {
+		write("PRICES - Bus ticket price");
+		// read user input for new bus ticket price
+		string msg <- "Bus ticket price";
+		map input_values <- user_input([msg::(bus_price)]);
+		// update president with new tax rate from user input
+		bus_price <- float(input_values[msg]);
+		// user feedback in console
+		write ("New bus price "+(bus_price)+"");
+	}
+
+	action forbid_old_cars {
+		write("PRICES - Forbid old cars");
+		// to check how accessibility of town evolves
+		// TODO select people with lower budget - allow them an action to change car if theirs is too old
+		ask 300 among (people where (each.has_car)) {
+			has_car <- false; // cannot use the car anymore
+		}
+	}
+
+	action add_bus_stop {
+		write("CODE - Add bus stop");
+		// TODO : augmenter directement le percent_close_bus (ou bien le nommer bus_cover)
+		// TODO: pour l'instant cette variable nb_bus_stops n'a aucun impact nulle part...
+		nb_bus_stops <- nb_bus_stops + 1; // will increase density hence practicity, time
+		
+		
+					
+		// some agents now gain a closer bus stop (about the population of one cell)
+		// attention il y a moins de people que de cells... (1000 contre 2500)
+		ask 10 among (people where ( not each.has_close_bus)) {
+			has_close_bus <- true;
+		}
+	}
+	
+	action increase_bus_capacity {
+		// FIXME can we reduce bus capacity? any change costs money anyway to reorganize buses
+		write("CODE - Bus capacity");
+		// read user input for new bus capa
+		string msg <- "Bus capacity (in people)";
+		int old_capa <- bus_capacity;	
+		map input_values <- user_input([msg::(bus_capacity)]);
+		bus_capacity <- int(input_values[msg]);
+		// if actually changed something
+		if old_capa != bus_capacity {
+			//actions_costs[14] <- 6;
+			// user feedback in console
+			write("New bus capacity : "+bus_capacity) color: #blue;
+			return true;
+		}
+		else {
+			return false;
+		}
+	}
+	
+	// TODO could decrease it if max !
+	action change_bus_frequency {
+		write("CODE - Bus frequency");
+		//if (bus_frequency < 1) {
+			float old_freq <- bus_frequency;
+			// read user input for new bus freq
+			string msg <- "Bus frequency (in %)";
+			map input_values <- user_input([msg::(bus_frequency)]);
+			bus_frequency <- float(input_values[msg]);
+						
+			// does the player lose or gain budget ?
+			if (bus_frequency > old_freq) {
+				actions_costs[11] <- 50 * (bus_frequency - old_freq);
+				write("Increased bus frequency : "+bus_frequency) color: #blue;
+			}
+			else if (bus_frequency < old_freq) {
+				actions_costs[11] <- -50 * (old_freq - bus_frequency);
+				write("Decreased bus frequency : "+bus_frequency) color: #blue;
+			}
+			else {
+				// the player did not change the frequency
+				actions_costs[11] <- 0;
+				write("No change in bus frequency : "+bus_frequency) color: #blue;
+			}					
+		//}
+	}
+	
+	// TODO different types: lane, paint on road/sidewalk, with different costs but different impacts on security
+	bool build_cycling_lane {
+		write("BUILD - Build cycling lane");
+		if road_infrastructure>0.1 and cycling_infrastructure<1 {
+			cycling_infrastructure <- cycling_infrastructure + 0.1;
+			road_infrastructure <- road_infrastructure - 0.1;
+			return true;
+		}
+		// cancel budget decrease (will be done per each cell clicked)
+		//budget <- budget + actions_costs[action_type];
+		// budget will just not be deduced since nothing was done
+		else {
+			return false;
+		}
+	}
+	
+	bool dedicate_buslane {
+		write ("BUILD - Dedicated bus lane");
+		if road_infrastructure >0.1 and bus_infrastructure<1 {
+			cycling_infrastructure <- cycling_infrastructure + 0.1;
+			road_infrastructure <- road_infrastructure - 0.1;
+			return true;
+		}
+		else {
+			write("No more lanes");
+			return false;
+		}
+	}
+	
+	bool dedicate_carlane {
+		write ("BUILD - Dedicated car lane");
+		if road_infrastructure<1 and cycling_infrastructure >0.1 {
+			road_infrastructure <- road_infrastructure + 0.1;
+			cycling_infrastructure <- cycling_infrastructure - 0.1;
+			return true;
+		}
+		else if road_infrastructure<1 and bus_infrastructure>0.1 {
+			road_infrastructure <- road_infrastructure + 0.1;
+			bus_infrastructure <- bus_infrastructure - 0.1;
+			return true;
+		}
+		else {
+			write("No more lanes");
+			return false;
+		}
+	}
+	
+	// TODO needs space, taken away from parking
+	bool plant_trees {
+		write("BUILD - Plant trees");
+		if indic_carpark > 0.1 {
+			write("destroyed some car parks to plant trees");
+			indic_trees <- indic_trees + 10;  // TODO normaliser
+			indic_carpark <- indic_carpark - 0.1;
+			return true;
+		}
+		else {
+			write("No more space to plant trees");
+			return false;
+		}
+		// cancel budget decrease (will be done per each cell clicked)
+		//budget <- budget + actions_costs[action_type];
+	}
+	
+	// TODO : il n'y aura plus de species road, c'est un niveau général de dégâts qu'il faut améliorer
+	// avec un coût par point de dégât	
+	action repair_road {
+		write("BUILD - repair roads");
+		avg_damage <- avg_damage -1;
+		if avg_damage < 0 {avg_damage <- 0.0;}
+	}
+	
+	// NOT CALLED yet (no button)
+	action build_road {
+		write("BUILD - build new road for cars");
+		road_infrastructure <- road_infrastructure + 0.1;
+		cycling_infrastructure <- cycling_infrastructure - 0.1;
+		// FIXME decrease bus / bike infrastructure
+	}
+	
+	// TODO could decrease it ? if not paying for it. For now decreases over time, so must pay regularly
+	action improve_town_safety {
+		write("CODE - Improve safety");
+		//values_modes[SAFE][WALK] <- min([1,values_modes[SAFE][WALK] * 1.1]) with_precision 2;
+		//values_modes[SAFE][BUS] <- min([1,values_modes[SAFE][BUS] * 1.1]) with_precision 2;
+		//budget <- budget - 7;
+		if town_safety < 1.0 {
+			town_safety <- town_safety + 0.1 with_precision 2;
+		}
+		else {
+			write("Safety is already maximal in your town");
+		}
+	}
+	
+	action build_carpark {
+		// build car park: TODO
+		write("CODE - Build carparks (Action 8 : TODO)");
+		
+		if indic_trees >= 10 {
+			indic_trees <- indic_trees - 10;
+			indic_carpark <- indic_carpark + 0.1;
+		}
+		else {
+			// fail
+		}		
+		// TODO: must cut some trees
+	}
+	
+	action tax_carpark {
+		write("MONEY - Tax carparks");
+		
+		// read user input for new bus capa
+		string msg <- "New parking price?";
+		map input_values <- user_input([msg::(parking_price)]);
+		parking_price <- int(input_values[msg]);
+		
+		// TODO : increase mayor's budget based on number of cars
+		//        decreases indiv budget of car drivers 
+	}
+	
+	action communicate_ecology {
+		write ("Communicate about ecology");
+		//prio_ecology <- prio_ecology * 1.2;
+		// ask x of prio_criteria[ECOLO]
+		ask 10 among people where (each.prio_criteria[ECOLO] > 0.5) {
+			prio_criteria[ECOLO] <- min([1,prio_criteria[ECOLO]*1.2]);
+		}
+	}
+	
+	action communicate_roadsafety {
+		write ("Communicate about road safety");
+		// prudence au volant augmente, risque d'accident diminue (provisoirement?)
+		// modifie un attribut indiv de prudence au volant?
+		ask 10 among people where (each.prudence > 0.3) {
+			prudence <- min([1,prudence*1.2]);
+		}
+	}
+	
+	action change_speed_limit {
+		write("Change speed limit in town");
+		string msg <- "New speed limit?";
+		map input_values <- user_input([msg::(speed_limit)]);
+		speed_limit <- int(input_values[msg]);
+		
+		// fait dans le tirage des accidents, pondéré par speed_limit
+		//accident_proba <- min([1,accident_proba * speed_limit/30]);
+	}
+	
+	
 }
 
 
@@ -1361,15 +1568,17 @@ experiment play type: gui {
 	// TODO population size?
 	
 	output {
- 		//layout horizontal([vertical([0::5676,1::4324])::3107,vertical([horizontal([2::5000,3::5000])::3859,4::6141])::6893]) tabs:true editors: false;
-		//layout #horizontal;
-
 		//Boutons d'action
 		display action_button name:"Actions possibles" ambient_light:100 	{
-//			grid bouton triangulation:false size:{0.5,0.5} position: {0,0};
 			species bouton aspect:normal ;
-			event mouse_down action:activate_act;    
-		
+			species bouton aspect:info ;			
+			//event mouse_down action:activate_act;
+			
+			// activer le bouton cliqué
+			event mouse_down action: {ask bouton  {do activate;}};
+
+			// afficher le texte quand survolé
+			event mouse_move action: {ask bouton {do inform;}};
 		}
 		// written indicators
 		display indicateurs name:"Feedback" ambient_light:100 {	// 200 #px, 180 #px 

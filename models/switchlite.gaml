@@ -45,6 +45,7 @@ model switchlite
 // - actions télétravail / horaires décalés, pour réduire la congestion à l'heure de pointe
 // - communication sur sport, sédentarité, santé
 
+
 // TODO doc : documenter l'ajout d'un bouton d'action
 
 global {
@@ -170,6 +171,7 @@ global {
 	// histograms of distribution - 2 pairs, keys = "values" : value = list of values, key = "legends" : value=list of bins
 	map<string, list> happydistrib;
 	map<string,list> politicaldistrib;
+	// elections
 	map<int,string> candidates;
 	map<string,int> votes;
 	
@@ -178,13 +180,6 @@ global {
 	// criteria eval for the whole town
 	map<int,float> city_criteria;
 	map<int,float> city_modes;
-	
-	// INTERFACE - IMAGES ON BUTTONS
-	//string dossierImages <-  "../includes/imgs/" ;
-	int nbcol <- 4;
-	//list<image_file> images <- [];	// from sprite, 4 colonnes de 7 boutons	
-	// which action was clicked in interface
-	//int action_type;
 	
 	// ************************
 	// ***  INITIALISATION  ***
@@ -519,16 +514,18 @@ global {
 		cost <- 100*infrastructure_level[CAR];
 		write("cost of roads "+string(cost));
 		budget <- budget - cost;
+
+		// prix d'entretien des parkings?
+		// prix d'entretien de toutes les infrastructures
 		
 		// damage caused by cars and buses
 		cost <- 10*year_trips[CAR] + 20*min([1,year_trips[BUS]/bus_capacity]);
 		write("cost of road maintainance "+string(cost));
 		budget <- budget - cost;
 		
-		// prix d'entretien des parkings?
-		
-		// prix d'entretien de toutes les infrastructures
-		
+		// TODO si pas assez de budget alors effets négatifs ??
+		// a minima maintenir le budget positif
+		if budget < 0 {budget <- 0.0;}
 	}
 	
 	
@@ -1249,8 +1246,9 @@ species bouton //width:4 height:7
 		if cost > 0 {ma_description <- ma_description+"("+string(cost)+")";}
 	}
 	
+	// activation appelée dans l'experiment - seul le bouton cliqué s'active
 	action activate {
-		if(self overlaps (circle(2) at_location #user_location)) {
+		if(self overlaps #user_location) {   // (circle(2) at_location
 			write(ma_description);
 			write("COST = "+string(cost));
 			if budget >= cost {do dispatch;}
@@ -1258,7 +1256,8 @@ species bouton //width:4 height:7
 		}
 	}
 	
-	action inform {display_info <- self overlaps (circle(2) at_location #user_location);}
+	// afficher infobulle au survol
+	action inform {display_info <- self overlaps (#user_location);}   // circle(2) at_location 
 	
 	int TITLE_MONEY <- 0;
 	int TITLE_INFRA <- 1;
@@ -1285,6 +1284,8 @@ species bouton //width:4 height:7
 	int CAR_LANE <- 21;
 	int CHANGE_TAX_RATE <- 22;
 	
+	// dispatcher le numéro d'action du bouton cliqué
+	// pour appeler la bonne fonction d'action
 	action dispatch {
 		bool done_action <- true;
 		switch action_nb {
@@ -1824,7 +1825,7 @@ experiment play type: gui {
        											(people mean_of each.notes_modes[BICYCLE]) with_precision 2,
        											(people mean_of each.notes_modes[BUS]) with_precision 2, 
        											(people mean_of each.notes_modes[CAR]) with_precision 2
-       				];
+       				] color: [#pink,#green,#blue,#red];
        			} //end chart       			
        		
        		chart "Happiness per mode" type: histogram size:{0.5,0.5} position: {0.5,0.5}
@@ -1834,7 +1835,7 @@ experiment play type: gui {
        						(people where (each.mobility_mode=BICYCLE)) mean_of each.happiness,
        						(people where (each.mobility_mode=BUS)) mean_of each.happiness,
        						(people where (each.mobility_mode=CAR)) mean_of each.happiness
-       			] ;
+       			] color: [#pink,#green,#blue,#red];
        		}
        		
        		/*chart "MODES SCORES" type: radar //background: #white axes: #black size: {0.5,0.5} position: {0,0.5}
